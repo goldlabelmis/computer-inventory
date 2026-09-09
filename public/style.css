@@ -1,0 +1,117 @@
+:root { 
+  --bg: #f8fafc; 
+  --card: #ffffff; 
+  --border: #e2e8f0; 
+  --text: #0f172a; 
+  --primary: #0284c7; 
+  --warning: #f59e0b; 
+  --danger: #ef4444; 
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100vh; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+
+.container-fluid { max-width: 1400px; margin: 0 auto; padding: 0 1.5rem; }
+.navbar { background: #fff; border-bottom: 1px solid var(--border); padding: 0.8rem 0; height: 60px; }
+.nav-content { display: flex; justify-content: space-between; align-items: center; height: 100%; }
+.actions { display: flex; gap: 0.5rem; }
+.search-bar { padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 6px; width: 200px; }
+
+/* INDEPENDENT DUAL SCROLLBAR LAYOUT */
+.app-layout { 
+  display: flex; 
+  max-width: 1400px; 
+  margin: 0 auto; 
+  height: calc(100vh - 60px); 
+  overflow: hidden; 
+}
+
+.sidebar {
+  width: 250px;
+  background: #ffffff;
+  border-right: 1px solid var(--border);
+  padding: 1.5rem 1rem;
+  height: 100%;
+  overflow-y: auto; /* Independent Sidebar Scroll */
+}
+
+.sidebar h3 {
+  font-size: 0.85rem;
+  color: #64748b;
+  text-transform: uppercase;
+  margin-bottom: 0.8rem;
+  letter-spacing: 0.5px;
+}
+
+.sidebar ul { list-style: none; }
+
+.sidebar li {
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 0.3rem;
+  color: #334155;
+  transition: all 0.15s ease;
+}
+
+.sidebar li:hover { background: #f1f5f9; color: var(--primary); }
+.sidebar li.active { background: #e0f2fe; color: var(--primary); font-weight: 600; }
+
+.main-content { 
+  flex: 1; 
+  padding: 1.5rem; 
+  height: 100%;
+  overflow-y: auto; /* Independent Main Content Scroll */
+}
+
+/* WORKSTATION CARD */
+.device-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+.device-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.meta-item label { display: block; font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: bold; }
+.meta-item span { font-size: 0.9rem; font-weight: 600; }
+
+.card-actions { display: flex; gap: 0.5rem; align-items: flex-start; }
+
+.sub-header { display: flex; justify-content: space-between; align-items: center; margin: 1.2rem 0 0.5rem; }
+.sub-header h4 { font-size: 0.85rem; color: var(--primary); }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 1rem; }
+th, td { padding: 0.6rem; text-align: left; border-bottom: 1px solid var(--border); }
+th { background: #f8fafc; font-size: 0.75rem; color: #64748b; text-transform: uppercase; }
+
+/* BUTTONS */
+.btn { background: var(--primary); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-weight: 500; }
+.btn-sm { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-warning { background: var(--warning); color: #fff; }
+.btn-danger { background: var(--danger); color: #fff; }
+
+/* FORM CONTROLS & MODALS */
+.modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); align-items: center; justify-content: center; z-index: 999; }
+.modal.active { display: flex; }
+.modal-card { background: #fff; padding: 1.5rem; border-radius: 8px; width: 100%; max-width: 450px; }
+.form-group { margin-bottom: 0.8rem; }
+.form-group label { display: block; font-size: 0.75rem; font-weight: bold; margin-bottom: 0.2rem; }
+.form-group input, .form-select { 
+  width: 100%; 
+  padding: 0.5rem; 
+  border: 1px solid var(--border); 
+  border-radius: 4px; 
+  outline: none;
+  font-size: 0.85rem;
+  background: #fff;
+}
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+
+/* TECHNICIAN ITEM ROW */
+.tech-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+.tech-item:last-child { border-bottom: none; }
