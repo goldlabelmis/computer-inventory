@@ -106,7 +106,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
   }
 });
 
-/* --- EXPORT EXCEL (.XLSX) - COMPACT SINGLE COLUMN SPECS FOR HIGH PRINT DENSITY --- */
+/* --- EXPORT EXCEL (.XLSX) WITH REMARKS COLUMN --- */
 app.get('/api/export/excel', requireAdmin, async (req, res) => {
   try {
     const { computerId } = req.query;
@@ -131,7 +131,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       margins: { left: 0.25, right: 0.25, top: 0.3, bottom: 0.3, header: 0, footer: 0 }
     };
 
-    // Columns configured to keep each computer on a single row
+    // Columns configuration including Column I (Remarks)
     worksheet.columns = [
       { header: 'No.', key: 'no', width: 5 },
       { header: 'Computer Code', key: 'code', width: 16 },
@@ -140,7 +140,8 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       { header: 'Department', key: 'department', width: 10 },
       { header: 'DRP1', key: 'drp1', width: 14 },
       { header: 'DRP2', key: 'drp2', width: 14 },
-      { header: 'System Components (CPU, RAM, Motherboard, Storage, etc.)', key: 'specs_summary', width: 55 }
+      { header: 'System Components (CPU, RAM, Motherboard, Storage, etc.)', key: 'specs_summary', width: 50 },
+      { header: 'Remarks', key: 'remarks', width: 25 } // Added Column I
     ];
 
     // Header Row Styling
@@ -156,14 +157,21 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
 
     computers.forEach((c, compIndex) => {
       const parts = c.parts || [];
+      const history = c.history || [];
       
-      // Combine CPU, RAM, SSD, HDD, and Motherboard into one clean multiline block
+      // Combine components into one clean multiline block
       const specsSummary = parts.map(p => {
         const type = p.item_type ? `${p.item_type.toUpperCase()}: ` : '';
         const brandModel = `${p.brand || ''} ${p.model || ''}`.trim();
         const serial = p.serial_number ? ` (SN: ${p.serial_number})` : '';
         return `${type}${brandModel}${serial}`;
       }).join('\n');
+
+      // Aggregate repair history remarks into a single multiline string
+      const remarksSummary = history
+        .map(h => h.remarks || h.description)
+        .filter(Boolean)
+        .join('\n');
 
       const row = worksheet.addRow({
         no: compIndex + 1,
@@ -173,19 +181,25 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
         department: c.department || '',
         drp1: c.drp1 || '',
         drp2: c.drp2 || '',
-        specs_summary: specsSummary || 'No specs listed'
+        specs_summary: specsSummary || 'No specs listed',
+        remarks: remarksSummary || ''
       });
 
-      // Calculate row height dynamically based on part count to prevent text clipping
-      row.height = Math.max(18, parts.length * 11);
+      // Adjust height to prevent text wrapping clipping
+      const maxLines = Math.max(parts.length, history.length, 1);
+      row.height = Math.max(18, maxLines * 11);
 
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         cell.font = { name: 'Calibri', size: 8 };
+        
+        // Left-align specs (Column H) and remarks (Column I), center the rest
+        const isLeftAligned = colNumber === 8 || colNumber === 9;
         cell.alignment = { 
           vertical: 'middle', 
-          horizontal: colNumber === 8 ? 'left' : 'center', 
+          horizontal: isLeftAligned ? 'left' : 'center', 
           wrapText: true 
         };
+
         cell.border = {
           top: { style: 'thin', color: { argb: '000000' } },
           bottom: { style: 'thin', color: { argb: '000000' } },
