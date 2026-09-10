@@ -1,349 +1,397 @@
-// State Management
-let inventoryData = [];
-let techniciansData = [];
-let selectedComputerId = null;
+let inventory = [];
+let technicians = [];
+let selectedPCId = 'ALL';
+let expandedCards = {}; // Tracks details expansion state per card ID
 
-// DOM Elements
-const computerListEl = document.getElementById('computer-list');
-const mainContentEl = document.getElementById('main-content');
-const searchInput = document.getElementById('search-input');
-
-// Initial Load
 document.addEventListener('DOMContentLoaded', () => {
   loadInventory();
   loadTechnicians();
+
+  document.getElementById('search-input').addEventListener('input', () => filterData());
+
+  // Workstation Form
+  document.getElementById('add-workstation-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const editId = document.getElementById('edit-comp-id').value;
+    const payload = {
+      property_name: document.getElementById('prop-name').value,
+      property_code: document.getElementById('prop-code').value,
+      location: document.getElementById('prop-loc').value,
+      department: document.getElementById('prop-dept').value,
+      drp1: document.getElementById('prop-drp1').value,
+      drp2: document.getElementById('prop-drp2').value
+    };
+
+    if (editId) {
+      await fetch(`/api/computers/${editId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } else {
+      await fetch('/api/computers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    closeModal('workstation-modal');
+    loadInventory();
+  };
+
+  // Add / Edit Part Form
+  document.getElementById('add-part-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const partId = document.getElementById('part-id').value;
+    const payload = {
+      computer_id: document.getElementById('part-comp-id').value,
+      item_type: document.getElementById('part-type').value,
+      brand: document.getElementById('part-brand').value,
+      model: document.getElementById('part-model').value,
+      specs: document.getElementById('part-specs').value,
+      serial_number: document.getElementById('part-sn').value,
+      date_purchased: document.getElementById('part-date').value
+    };
+
+    if (partId) {
+      await fetch(`/api/components/${partId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } else {
+      await fetch('/api/components', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    closeModal('part-modal');
+    loadInventory();
+  };
+
+  // Add / Edit Repair Form
+  document.getElementById('add-repair-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const repairId = document.getElementById('repair-id').value;
+    const payload = {
+      computer_id: document.getElementById('repair-comp-id').value,
+      log_date: document.getElementById('repair-date').value,
+      item: document.getElementById('repair-item').value,
+      description: document.getElementById('repair-desc').value,
+      remarks: document.getElementById('repair-remarks').value
+    };
+
+    if (repairId) {
+      await fetch(`/api/repair-logs/${repairId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } else {
+      await fetch('/api/repair-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    closeModal('repair-modal');
+    loadInventory();
+  };
+
+  // Technician Form
+  document.getElementById('add-tech-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('new-tech-name');
+    const name = input.value.trim();
+    if (!name) return;
+
+    const res = await fetch('/api/technicians', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+
+    if (res.ok) {
+      input.value = '';
+      loadTechnicians();
+    } else {
+      alert('Technician already exists.');
+    }
+  };
 });
 
-// Helper: Normalize ID from MongoDB
-function getId(item) {
-  if (!item) return '';
-  return item.id || item._id || '';
-}
-
-// Fetch Inventory from Server
 async function loadInventory() {
-  try {
-    const res = await fetch('/api/inventory');
-    inventoryData = await res.json();
-    renderSidebar();
-    
-    // Maintain selection or select first PC
-    if (selectedComputerId) {
-      renderComputerDetails(selectedComputerId);
-    } else if (inventoryData.length > 0) {
-      selectComputer(getId(inventoryData[0]));
-    } else {
-      renderEmptyState();
-    }
-  } catch (err) {
-    console.error('Error loading inventory:', err);
-  }
+  const res = await fetch('/api/inventory');
+  inventory = await res.json();
+  renderSidebar();
+  filterData();
 }
 
-// Fetch Technicians
 async function loadTechnicians() {
-  try {
-    const res = await fetch('/api/technicians');
-    techniciansData = await res.json();
-  } catch (err) {
-    console.error('Error loading technicians:', err);
-  }
+  const res = await fetch('/api/technicians');
+  technicians = await res.json();
+  populateTechDropdown();
+  renderTechManageList();
 }
 
-// Render Sidebar Navigation
-function renderSidebar(filteredData = null) {
-  const data = filteredData || inventoryData;
-  if (!computerListEl) return;
-
-  computerListEl.innerHTML = `
-    <button class="nav-item ${selectedComputerId === 'ALL' ? 'active' : ''}" onclick="selectAllPCs()">
-      💻 All PCs (${inventoryData.length})
-    </button>
-    ${data.map(comp => {
-      const id = getId(comp);
-      return `
-        <button class="nav-item ${selectedComputerId === id ? 'active' : ''}" onclick="selectComputer('${id}')">
-          🖥️ ${escapeHtml(comp.property_name || 'Unnamed')}
-        </button>
-      `;
-    }).join('')}
-  `;
-}
-
-// Search Filtering
-if (searchInput) {
-  searchInput.addEventListener('input', (e) => {
-    const query = e.target.value.toLowerCase();
-    const filtered = inventoryData.filter(comp => 
-      (comp.property_name && comp.property_name.toLowerCase().includes(query)) ||
-      (comp.property_code && comp.property_code.toLowerCase().includes(query)) ||
-      (comp.location && comp.location.toLowerCase().includes(query)) ||
-      (comp.department && comp.department.toLowerCase().includes(query))
-    );
-    renderSidebar(filtered);
+function populateTechDropdown() {
+  const select = document.getElementById('repair-remarks');
+  select.innerHTML = '<option value="" disabled selected>-- Select Technician --</option>';
+  technicians.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.name;
+    opt.textContent = t.name;
+    select.appendChild(opt);
   });
 }
 
-function selectComputer(id) {
-  selectedComputerId = id;
-  renderSidebar();
-  renderComputerDetails(id);
-}
-
-function selectAllPCs() {
-  selectedComputerId = 'ALL';
-  renderSidebar();
-  renderAllPCsView();
-}
-
-// Render Details for Single Computer
-function renderComputerDetails(id) {
-  const comp = inventoryData.find(c => getId(c) === id);
-  if (!comp) return renderEmptyState();
-
-  const compId = getId(comp);
-
-  mainContentEl.innerHTML = `
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <span class="label">CODE</span>
-          <h3>${escapeHtml(comp.property_code)}</h3>
-        </div>
-        <div>
-          <span class="label">NAME</span>
-          <h3>${escapeHtml(comp.property_name)}</h3>
-        </div>
-        <div>
-          <span class="label">LOCATION</span>
-          <p>${escapeHtml(comp.location || '-')}</p>
-        </div>
-        <div>
-          <span class="label">DEPT</span>
-          <p>${escapeHtml(comp.department || '-')}</p>
-        </div>
-        <div>
-          <span class="label">DRP 1</span>
-          <p>${escapeHtml(comp.drp1 || '-')}</p>
-        </div>
-        <div>
-          <span class="label">DRP 2</span>
-          <p>${escapeHtml(comp.drp2 || '-')}</p>
-        </div>
-        <div class="actions">
-          <button class="btn btn-warning" onclick="openEditWorkstationModal('${compId}')">✏️ Edit</button>
-          <button class="btn btn-danger" onclick="deleteWorkstation('${compId}')">Delete Unit</button>
-        </div>
-      </div>
-
-      <!-- Parts & Peripherals Section -->
-      <div class="section-header">
-        <h4>Parts & Peripherals</h4>
-        <button class="btn btn-sm btn-outline" onclick="openAddPartModal('${compId}')">+ Add Part</button>
-      </div>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>TYPE</th>
-            <th>BRAND/MODEL</th>
-            <th>SPECS / SN</th>
-            <th>DATE</th>
-            <th>ACTION</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${(comp.parts && comp.parts.length > 0) ? comp.parts.map(p => {
-            const partId = getId(p);
-            return `
-              <tr>
-                <td>${escapeHtml(p.item_type || '-')}</td>
-                <td>${escapeHtml(p.brand || '')} ${escapeHtml(p.model || '')}</td>
-                <td>${escapeHtml(p.specs || '')} ${p.serial_number ? `(S/N: ${escapeHtml(p.serial_number)})` : ''}</td>
-                <td>${escapeHtml(p.date_purchased || '-')}</td>
-                <td>
-                  <button class="btn-icon" onclick="deletePart('${partId}')">🗑️</button>
-                </td>
-              </tr>
-            `;
-          }).join('') : `<tr><td colspan="5" class="empty-text">No parts recorded.</td></tr>`}
-        </tbody>
-      </table>
-
-      <!-- Repair Logs Section -->
-      <div class="section-header">
-        <h4>🛠️ Maintenance & Repair History</h4>
-        <button class="btn btn-sm btn-outline" onclick="openAddRepairModal('${compId}')">+ Log Repair</button>
-      </div>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>DATE</th>
-            <th>ITEM</th>
-            <th>DESCRIPTION</th>
-            <th>TECH</th>
-            <th>ACTION</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${(comp.history && comp.history.length > 0) ? comp.history.map(h => {
-            const logId = getId(h);
-            return `
-              <tr>
-                <td>${escapeHtml(h.log_date || '-')}</td>
-                <td>${escapeHtml(h.item || '-')}</td>
-                <td>${escapeHtml(h.description || '-')} ${h.remarks ? `<br><small>${escapeHtml(h.remarks)}</small>` : ''}</td>
-                <td>${escapeHtml(h.remarks || '-')}</td>
-                <td>
-                  <button class="btn-icon" onclick="deleteRepairLog('${logId}')">🗑️</button>
-                </td>
-              </tr>
-            `;
-          }).join('') : `<tr><td colspan="5" class="empty-text">No repair logs recorded.</td></tr>`}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-// Render "All PCs" Summary Table
-function renderAllPCsView() {
-  mainContentEl.innerHTML = `
-    <div class="card">
-      <h3>All Workstations</h3>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>CODE</th>
-            <th>NAME</th>
-            <th>LOCATION</th>
-            <th>DEPT</th>
-            <th>DRP 1</th>
-            <th>ACTION</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${inventoryData.map(comp => {
-            const compId = getId(comp);
-            return `
-              <tr>
-                <td><b>${escapeHtml(comp.property_code)}</b></td>
-                <td>${escapeHtml(comp.property_name)}</td>
-                <td>${escapeHtml(comp.location || '-')}</td>
-                <td>${escapeHtml(comp.department || '-')}</td>
-                <td>${escapeHtml(comp.drp1 || '-')}</td>
-                <td>
-                  <button class="btn btn-sm" onclick="selectComputer('${compId}')">Show Details</button>
-                  <button class="btn btn-sm btn-warning" onclick="openEditWorkstationModal('${compId}')">✏️ Edit</button>
-                  <button class="btn btn-sm btn-danger" onclick="deleteWorkstation('${compId}')">Delete</button>
-                </td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function renderEmptyState() {
-  mainContentEl.innerHTML = `<div class="card"><p class="empty-text">No workstation selected or list is empty.</p></div>`;
-}
-
-/* API ACTIONS */
-
-async function deleteWorkstation(id) {
-  if (!confirm('Are you sure you want to delete this workstation?')) return;
-  try {
-    await fetch(`/api/computers/${id}`, { method: 'DELETE' });
-    selectedComputerId = null;
-    loadInventory();
-  } catch (err) {
-    alert('Failed to delete workstation: ' + err.message);
-  }
-}
-
-async function deletePart(partId) {
-  if (!confirm('Remove this part?')) return;
-  try {
-    await fetch(`/api/components/${partId}`, { method: 'DELETE' });
-    loadInventory();
-  } catch (err) {
-    alert('Failed to delete part: ' + err.message);
-  }
-}
-
-async function deleteRepairLog(logId) {
-  if (!confirm('Delete this repair log?')) return;
-  try {
-    await fetch(`/api/repair-logs/${logId}`, { method: 'DELETE' });
-    loadInventory();
-  } catch (err) {
-    alert('Failed to delete log: ' + err.message);
-  }
-}
-
-// Modal Handlers & Technicians Management
-function openTechniciansModal() {
-  const modal = document.getElementById('tech-modal');
-  if (!modal) return;
-  renderTechniciansList();
-  modal.classList.add('show');
-}
-
-function closeTechniciansModal() {
-  const modal = document.getElementById('tech-modal');
-  if (modal) modal.classList.remove('show');
-}
-
-function renderTechniciansList() {
-  const listEl = document.getElementById('tech-list');
-  if (!listEl) return;
-  listEl.innerHTML = techniciansData.map(t => {
-    const techId = getId(t);
-    return `
-      <div class="tech-item">
-        <span>👤 ${escapeHtml(t.name)}</span>
-        <button class="btn-icon" onclick="deleteTechnician('${techId}')">❌</button>
-      </div>
-    `;
-  }).join('');
-}
-
-async function addTechnician() {
-  const input = document.getElementById('tech-name-input');
-  if (!input || !input.value.trim()) return;
+function renderTechManageList() {
+  const list = document.getElementById('tech-manage-list');
+  list.innerHTML = technicians.length ? '' : '<li style="text-align:center; padding:0.5rem; color:#94a3b8;">No technicians found.</li>';
   
-  try {
-    await fetch('/api/technicians', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: input.value.trim() })
-    });
-    input.value = '';
-    await loadTechnicians();
-    renderTechniciansList();
-  } catch (err) {
-    alert('Error adding technician: ' + err.message);
-  }
+  technicians.forEach(t => {
+    const li = document.createElement('li');
+    li.className = 'tech-item';
+    li.innerHTML = `
+      <span>👤 ${t.name}</span>
+      <button class="btn btn-sm btn-danger" onclick="deleteTech(${t.id})">❌</button>
+    `;
+    list.appendChild(li);
+  });
 }
 
-async function deleteTechnician(id) {
-  try {
+async function deleteTech(id) {
+  if (confirm('Remove this technician?')) {
     await fetch(`/api/technicians/${id}`, { method: 'DELETE' });
-    await loadTechnicians();
-    renderTechniciansList();
-  } catch (err) {
-    alert('Error deleting technician: ' + err.message);
+    loadTechnicians();
   }
 }
 
-// Helper: XSS Protection
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+// Render Alphabetical Sidebar
+function renderSidebar() {
+  const sidebar = document.getElementById('pc-list-sidebar');
+  sidebar.innerHTML = `<li class="${selectedPCId === 'ALL' ? 'active' : ''}" onclick="filterByPC('ALL')">💻 All PCs</li>`;
+
+  // Sort Alphabetically by property name
+  const sortedInventory = [...inventory].sort((a, b) => a.property_name.localeCompare(b.property_name));
+
+  sortedInventory.forEach(item => {
+    const li = document.createElement('li');
+    li.className = selectedPCId == item.id ? 'active' : '';
+    li.innerHTML = `🖥️ ${item.property_name}`;
+    li.onclick = () => filterByPC(item.id);
+    sidebar.appendChild(li);
+  });
 }
+
+function filterByPC(id) {
+  selectedPCId = id;
+  expandedCards = {}; // Clear toggle state when switching sidebar filters
+  renderSidebar();
+  filterData();
+}
+
+function filterData() {
+  const query = document.getElementById('search-input').value.toLowerCase();
+  let filtered = inventory;
+
+  if (selectedPCId !== 'ALL') {
+    filtered = filtered.filter(i => i.id == selectedPCId);
+  }
+
+  if (query) {
+    filtered = filtered.filter(i => 
+      i.property_code.toLowerCase().includes(query) || 
+      i.property_name.toLowerCase().includes(query) || 
+      i.location.toLowerCase().includes(query) ||
+      i.department.toLowerCase().includes(query)
+    );
+  }
+
+  render(filtered);
+}
+
+function toggleDetails(id) {
+  expandedCards[id] = !expandedCards[id];
+  filterData();
+}
+
+function render(data) {
+  const container = document.getElementById('inventory-list');
+  container.innerHTML = data.length ? '' : '<p style="text-align:center; padding: 2rem;">No records found.</p>';
+
+  data.forEach(item => {
+    // If a single computer is selected in the sidebar, force expanded and hide toggle button
+    const isSingleSelection = selectedPCId !== 'ALL';
+    const isExpanded = isSingleSelection ? true : !!expandedCards[item.id];
+
+    const partsRows = item.parts.map(p => `
+      <tr>
+        <td><strong>${p.item_type}</strong></td>
+        <td>${p.brand || ''} ${p.model || ''}</td>
+        <td>${p.specs || ''} ${p.serial_number ? '(SN: ' + p.serial_number + ')' : ''}</td>
+        <td>${p.date_purchased || '-'}</td>
+        <td style="white-space: nowrap;">
+          <button class="btn btn-sm btn-warning" onclick="editPart(${item.id}, ${p.id})">✏️</button>
+          <button class="btn btn-sm btn-danger" onclick="deletePart(${p.id})">❌</button>
+        </td>
+      </tr>
+    `).join('');
+
+    const repairRows = item.history.map(h => `
+      <tr>
+        <td>${h.log_date}</td>
+        <td><strong>${h.item}</strong></td>
+        <td>${h.description}</td>
+        <td>${h.remarks || '-'}</td>
+        <td style="white-space: nowrap;">
+          <button class="btn btn-sm btn-warning" onclick="editRepair(${item.id}, ${h.id})">✏️</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteRepair(${h.id})">❌</button>
+        </td>
+      </tr>
+    `).join('');
+
+    const card = document.createElement('div');
+    card.className = 'device-card';
+    card.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div class="device-meta" style="flex: 1;">
+          <div class="meta-item"><label>CODE</label><span>${item.property_code}</span></div>
+          <div class="meta-item"><label>NAME</label><span>${item.property_name}</span></div>
+          <div class="meta-item"><label>LOCATION</label><span>${item.location || '-'}</span></div>
+          <div class="meta-item"><label>DEPT</label><span>${item.department || '-'}</span></div>
+          <div class="meta-item"><label>DRP 1</label><span>${item.drp1 || '-'}</span></div>
+          <div class="meta-item"><label>DRP 2</label><span>${item.drp2 || '-'}</span></div>
+        </div>
+        <div class="card-actions">
+          ${!isSingleSelection ? `
+            <button class="btn btn-sm btn-outline" onclick="toggleDetails(${item.id})">
+              ${isExpanded ? 'Hide Details' : 'Show Details'}
+            </button>
+          ` : ''}
+          <button class="btn btn-sm btn-warning" onclick="editWorkstation(${item.id})">✏️ Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteComp(${item.id})">Delete Unit</button>
+        </div>
+      </div>
+
+      ${isExpanded ? `
+      <div class="details-section" style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+        <div class="sub-header">
+          <h4>Parts & Peripherals</h4>
+          <button class="btn btn-sm btn-outline" onclick="openPartModal(${item.id})">+ Add Part</button>
+        </div>
+        <table>
+          <thead><tr><th>Type</th><th>Brand/Model</th><th>Specs / SN</th><th>Date</th><th>Action</th></tr></thead>
+          <tbody>${partsRows || '<tr><td colspan="5">No parts recorded.</td></tr>'}</tbody>
+        </table>
+
+        <div class="sub-header">
+          <h4>🛠️ Maintenance & Repair History</h4>
+          <button class="btn btn-sm btn-outline" onclick="openRepairModal(${item.id})">+ Log Repair</button>
+        </div>
+        <table>
+          <thead><tr><th>Date</th><th>Item</th><th>Description</th><th>Tech</th><th>Action</th></tr></thead>
+          <tbody>${repairRows || '<tr><td colspan="5">No repair logs recorded.</td></tr>'}</tbody>
+        </table>
+      </div>
+      ` : ''}
+    `;
+    container.appendChild(card);
+  });
+}
+
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { 
+  document.getElementById(id).classList.remove('active'); 
+  if (id === 'workstation-modal') {
+    document.getElementById('edit-comp-id').value = '';
+    document.getElementById('workstation-modal-title').innerText = 'Add Workstation';
+    document.getElementById('add-workstation-form').reset();
+  }
+  if (id === 'part-modal') {
+    document.getElementById('part-id').value = '';
+    document.getElementById('part-modal-title').innerText = 'Add Part';
+    document.getElementById('add-part-form').reset();
+  }
+  if (id === 'repair-modal') {
+    document.getElementById('repair-id').value = '';
+    document.getElementById('repair-modal-title').innerText = 'Log Repair';
+    document.getElementById('add-repair-form').reset();
+  }
+}
+
+function openPartModal(compId) { 
+  document.getElementById('part-id').value = '';
+  document.getElementById('part-comp-id').value = compId; 
+  document.getElementById('part-modal-title').innerText = 'Add Part';
+  openModal('part-modal'); 
+}
+
+function openRepairModal(compId) { 
+  document.getElementById('repair-id').value = '';
+  document.getElementById('repair-comp-id').value = compId; 
+  document.getElementById('repair-modal-title').innerText = 'Log Repair';
+  openModal('repair-modal'); 
+}
+
+function openTechModal() { openModal('tech-modal'); }
+
+function editWorkstation(id) {
+  const item = inventory.find(c => c.id === id);
+  if (!item) return;
+
+  document.getElementById('edit-comp-id').value = item.id;
+  document.getElementById('prop-name').value = item.property_name || '';
+  document.getElementById('prop-code').value = item.property_code || '';
+  document.getElementById('prop-loc').value = item.location || '';
+  document.getElementById('prop-dept').value = item.department || '';
+  document.getElementById('prop-drp1').value = item.drp1 || '';
+  document.getElementById('prop-drp2').value = item.drp2 || '';
+
+  document.getElementById('workstation-modal-title').innerText = 'Edit Workstation';
+  openModal('workstation-modal');
+}
+
+function editPart(compId, partId) {
+  const comp = inventory.find(c => c.id === compId);
+  if (!comp) return;
+  const part = comp.parts.find(p => p.id === partId);
+  if (!part) return;
+
+  document.getElementById('part-id').value = part.id;
+  document.getElementById('part-comp-id').value = compId;
+  document.getElementById('part-type').value = part.item_type || '';
+  document.getElementById('part-brand').value = part.brand || '';
+  document.getElementById('part-model').value = part.model || '';
+  document.getElementById('part-date').value = part.date_purchased || '';
+  document.getElementById('part-sn').value = part.serial_number || '';
+  document.getElementById('part-specs').value = part.specs || '';
+
+  document.getElementById('part-modal-title').innerText = 'Edit Part';
+  openModal('part-modal');
+}
+
+function editRepair(compId, repairId) {
+  const comp = inventory.find(c => c.id === compId);
+  if (!comp) return;
+  const log = comp.history.find(h => h.id === repairId);
+  if (!log) return;
+
+  document.getElementById('repair-id').value = log.id;
+  document.getElementById('repair-comp-id').value = compId;
+  document.getElementById('repair-date').value = log.log_date || '';
+  document.getElementById('repair-item').value = log.item || '';
+  document.getElementById('repair-desc').value = log.description || '';
+  document.getElementById('repair-remarks').value = log.remarks || '';
+
+  document.getElementById('repair-modal-title').innerText = 'Edit Repair Log';
+  openModal('repair-modal');
+}
+
+async function deleteComp(id) { if(confirm('Delete workstation?')) { await fetch(`/api/computers/${id}`, {method:'DELETE'}); loadInventory(); } }
+async function deletePart(id) { if(confirm('Delete part?')) { await fetch(`/api/components/${id}`, {method:'DELETE'}); loadInventory(); } }
+async function deleteRepair(id) { if(confirm('Delete log?')) { await fetch(`/api/repair-logs/${id}`, {method:'DELETE'}); loadInventory(); } }
