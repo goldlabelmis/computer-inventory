@@ -3,6 +3,11 @@ let technicians = [];
 let selectedPCId = 'ALL';
 let expandedCards = {}; // Tracks details expansion state per card ID
 
+// Helper function to safely extract ID from MongoDB objects
+function getId(obj) {
+  return obj ? (obj.id || obj._id || '') : '';
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadInventory();
   loadTechnicians();
@@ -154,11 +159,12 @@ function renderTechManageList() {
   list.innerHTML = technicians.length ? '' : '<li style="text-align:center; padding:0.5rem; color:#94a3b8;">No technicians found.</li>';
   
   technicians.forEach(t => {
+    const techId = getId(t);
     const li = document.createElement('li');
     li.className = 'tech-item';
     li.innerHTML = `
       <span>👤 ${t.name}</span>
-      <button class="btn btn-sm btn-danger" onclick="deleteTech(${t.id})">❌</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteTech('${techId}')">❌</button>
     `;
     list.appendChild(li);
   });
@@ -177,13 +183,14 @@ function renderSidebar() {
   sidebar.innerHTML = `<li class="${selectedPCId === 'ALL' ? 'active' : ''}" onclick="filterByPC('ALL')">💻 All PCs</li>`;
 
   // Sort Alphabetically by property name
-  const sortedInventory = [...inventory].sort((a, b) => a.property_name.localeCompare(b.property_name));
+  const sortedInventory = [...inventory].sort((a, b) => (a.property_name || '').localeCompare(b.property_name || ''));
 
   sortedInventory.forEach(item => {
+    const itemId = getId(item);
     const li = document.createElement('li');
-    li.className = selectedPCId == item.id ? 'active' : '';
+    li.className = selectedPCId == itemId ? 'active' : '';
     li.innerHTML = `🖥️ ${item.property_name}`;
-    li.onclick = () => filterByPC(item.id);
+    li.onclick = () => filterByPC(itemId);
     sidebar.appendChild(li);
   });
 }
@@ -200,15 +207,15 @@ function filterData() {
   let filtered = inventory;
 
   if (selectedPCId !== 'ALL') {
-    filtered = filtered.filter(i => i.id == selectedPCId);
+    filtered = filtered.filter(i => getId(i) == selectedPCId);
   }
 
   if (query) {
     filtered = filtered.filter(i => 
-      i.property_code.toLowerCase().includes(query) || 
-      i.property_name.toLowerCase().includes(query) || 
-      i.location.toLowerCase().includes(query) ||
-      i.department.toLowerCase().includes(query)
+      (i.property_code || '').toLowerCase().includes(query) || 
+      (i.property_name || '').toLowerCase().includes(query) || 
+      (i.location || '').toLowerCase().includes(query) ||
+      (i.department || '').toLowerCase().includes(query)
     );
   }
 
@@ -225,43 +232,51 @@ function render(data) {
   container.innerHTML = data.length ? '' : '<p style="text-align:center; padding: 2rem;">No records found.</p>';
 
   data.forEach(item => {
+    const itemId = getId(item);
+
     // If a single computer is selected in the sidebar, force expanded and hide toggle button
     const isSingleSelection = selectedPCId !== 'ALL';
-    const isExpanded = isSingleSelection ? true : !!expandedCards[item.id];
+    const isExpanded = isSingleSelection ? true : !!expandedCards[itemId];
 
-    const partsRows = item.parts.map(p => `
-      <tr>
-        <td><strong>${p.item_type}</strong></td>
-        <td>${p.brand || ''} ${p.model || ''}</td>
-        <td>${p.specs || ''} ${p.serial_number ? '(SN: ' + p.serial_number + ')' : ''}</td>
-        <td>${p.date_purchased || '-'}</td>
-        <td style="white-space: nowrap;">
-          <button class="btn btn-sm btn-warning" onclick="editPart(${item.id}, ${p.id})">✏️</button>
-          <button class="btn btn-sm btn-danger" onclick="deletePart(${p.id})">❌</button>
-        </td>
-      </tr>
-    `).join('');
+    const partsRows = (item.parts || []).map(p => {
+      const partId = getId(p);
+      return `
+        <tr>
+          <td><strong>${p.item_type || '-'}</strong></td>
+          <td>${p.brand || ''} ${p.model || ''}</td>
+          <td>${p.specs || ''} ${p.serial_number ? '(SN: ' + p.serial_number + ')' : ''}</td>
+          <td>${p.date_purchased || '-'}</td>
+          <td style="white-space: nowrap;">
+            <button class="btn btn-sm btn-warning" onclick="editPart('${itemId}', '${partId}')">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="deletePart('${partId}')">❌</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
 
-    const repairRows = item.history.map(h => `
-      <tr>
-        <td>${h.log_date}</td>
-        <td><strong>${h.item}</strong></td>
-        <td>${h.description}</td>
-        <td>${h.remarks || '-'}</td>
-        <td style="white-space: nowrap;">
-          <button class="btn btn-sm btn-warning" onclick="editRepair(${item.id}, ${h.id})">✏️</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteRepair(${h.id})">❌</button>
-        </td>
-      </tr>
-    `).join('');
+    const repairRows = (item.history || []).map(h => {
+      const repairId = getId(h);
+      return `
+        <tr>
+          <td>${h.log_date || '-'}</td>
+          <td><strong>${h.item || '-'}</strong></td>
+          <td>${h.description || '-'}</td>
+          <td>${h.remarks || '-'}</td>
+          <td style="white-space: nowrap;">
+            <button class="btn btn-sm btn-warning" onclick="editRepair('${itemId}', '${repairId}')">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteRepair('${repairId}')">❌</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
 
     const card = document.createElement('div');
     card.className = 'device-card';
     card.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: flex-start;">
         <div class="device-meta" style="flex: 1;">
-          <div class="meta-item"><label>CODE</label><span>${item.property_code}</span></div>
-          <div class="meta-item"><label>NAME</label><span>${item.property_name}</span></div>
+          <div class="meta-item"><label>CODE</label><span>${item.property_code || '-'}</span></div>
+          <div class="meta-item"><label>NAME</label><span>${item.property_name || '-'}</span></div>
           <div class="meta-item"><label>LOCATION</label><span>${item.location || '-'}</span></div>
           <div class="meta-item"><label>DEPT</label><span>${item.department || '-'}</span></div>
           <div class="meta-item"><label>DRP 1</label><span>${item.drp1 || '-'}</span></div>
@@ -269,12 +284,12 @@ function render(data) {
         </div>
         <div class="card-actions">
           ${!isSingleSelection ? `
-            <button class="btn btn-sm btn-outline" onclick="toggleDetails(${item.id})">
+            <button class="btn btn-sm btn-outline" onclick="toggleDetails('${itemId}')">
               ${isExpanded ? 'Hide Details' : 'Show Details'}
             </button>
           ` : ''}
-          <button class="btn btn-sm btn-warning" onclick="editWorkstation(${item.id})">✏️ Edit</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteComp(${item.id})">Delete Unit</button>
+          <button class="btn btn-sm btn-warning" onclick="editWorkstation('${itemId}')">✏️ Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteComp('${itemId}')">Delete Unit</button>
         </div>
       </div>
 
@@ -282,7 +297,7 @@ function render(data) {
       <div class="details-section" style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem;">
         <div class="sub-header">
           <h4>Parts & Peripherals</h4>
-          <button class="btn btn-sm btn-outline" onclick="openPartModal(${item.id})">+ Add Part</button>
+          <button class="btn btn-sm btn-outline" onclick="openPartModal('${itemId}')">+ Add Part</button>
         </div>
         <table>
           <thead><tr><th>Type</th><th>Brand/Model</th><th>Specs / SN</th><th>Date</th><th>Action</th></tr></thead>
@@ -291,7 +306,7 @@ function render(data) {
 
         <div class="sub-header">
           <h4>🛠️ Maintenance & Repair History</h4>
-          <button class="btn btn-sm btn-outline" onclick="openRepairModal(${item.id})">+ Log Repair</button>
+          <button class="btn btn-sm btn-outline" onclick="openRepairModal('${itemId}')">+ Log Repair</button>
         </div>
         <table>
           <thead><tr><th>Date</th><th>Item</th><th>Description</th><th>Tech</th><th>Action</th></tr></thead>
@@ -341,10 +356,10 @@ function openRepairModal(compId) {
 function openTechModal() { openModal('tech-modal'); }
 
 function editWorkstation(id) {
-  const item = inventory.find(c => c.id === id);
+  const item = inventory.find(c => getId(c) === id);
   if (!item) return;
 
-  document.getElementById('edit-comp-id').value = item.id;
+  document.getElementById('edit-comp-id').value = getId(item);
   document.getElementById('prop-name').value = item.property_name || '';
   document.getElementById('prop-code').value = item.property_code || '';
   document.getElementById('prop-loc').value = item.location || '';
@@ -357,12 +372,12 @@ function editWorkstation(id) {
 }
 
 function editPart(compId, partId) {
-  const comp = inventory.find(c => c.id === compId);
+  const comp = inventory.find(c => getId(c) === compId);
   if (!comp) return;
-  const part = comp.parts.find(p => p.id === partId);
+  const part = (comp.parts || []).find(p => getId(p) === partId);
   if (!part) return;
 
-  document.getElementById('part-id').value = part.id;
+  document.getElementById('part-id').value = getId(part);
   document.getElementById('part-comp-id').value = compId;
   document.getElementById('part-type').value = part.item_type || '';
   document.getElementById('part-brand').value = part.brand || '';
@@ -376,12 +391,12 @@ function editPart(compId, partId) {
 }
 
 function editRepair(compId, repairId) {
-  const comp = inventory.find(c => c.id === compId);
+  const comp = inventory.find(c => getId(c) === compId);
   if (!comp) return;
-  const log = comp.history.find(h => h.id === repairId);
+  const log = (comp.history || []).find(h => getId(h) === repairId);
   if (!log) return;
 
-  document.getElementById('repair-id').value = log.id;
+  document.getElementById('repair-id').value = getId(log);
   document.getElementById('repair-comp-id').value = compId;
   document.getElementById('repair-date').value = log.log_date || '';
   document.getElementById('repair-item').value = log.item || '';
