@@ -2,6 +2,7 @@ const express = require('express');
 const session = require('express-session');
 const mongoose = require('mongoose');
 const path = require('path');
+const ExcelJS = require('exceljs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -105,7 +106,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
   }
 });
 
-/* --- EXPORT CSV/EXCEL --- */
+/* --- EXPORT EXCEL (.XLSX) WITH STYLING --- */
 app.get('/api/export/excel', requireAdmin, async (req, res) => {
   try {
     const { computerId } = req.query;
@@ -117,35 +118,107 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
 
     const computers = await Computer.find(query);
 
-    let filename = 'inventory_report.csv';
-    if (computers.length === 1 && computers[0].property_name) {
-      const sanitizedName = computers[0].property_name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      filename = `${sanitizedName}_report.csv`;
-    }
+    // Initialize Excel Workbook and Sheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Computer Inventory');
 
-    let csv = 'Computer Code,Computer Name,Location,Department,DRP1,DRP2,Part Type,Part Brand/Model,Part SN,Repair Date,Repair Item,Repair Tech\n';
+    // Setup Columns & Auto-Fit Widths
+    worksheet.columns = [
+      { header: 'Computer Code', key: 'code', width: 20 },
+      { header: 'Computer Name', key: 'name', width: 20 },
+      { header: 'Location', key: 'location', width: 16 },
+      { header: 'Department', key: 'department', width: 16 },
+      { header: 'DRP1', key: 'drp1', width: 18 },
+      { header: 'DRP2', key: 'drp2', width: 18 },
+      { header: 'Part Type', key: 'part_type', width: 16 },
+      { header: 'Part Brand/Model', key: 'part_model', width: 28 },
+      { header: 'Part SN', key: 'part_sn', width: 24 },
+      { header: 'Repair Date', key: 'repair_date', width: 15 },
+      { header: 'Repair Item', key: 'repair_item', width: 22 },
+      { header: 'Repair Tech', key: 'repair_tech', width: 20 }
+    ];
 
-    computers.forEach(c => {
-      const base = `"${c.property_code}","${c.property_name}","${c.location || ''}","${c.department || ''}","${c.drp1 || ''}","${c.drp2 || ''}"`;
+    // Format Main Header
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: '1F4E79' } // Dark blue header fill
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 26;
+
+    // Alternating shading per computer
+    const bgColors = ['F2F5F9', 'FFFFFF'];
+
+    computers.forEach((c, index) => {
+      const currentBg = bgColors[index % 2];
       const maxRows = Math.max((c.parts || []).length, (c.history || []).length);
 
       if (maxRows === 0) {
-        csv += `${base},"","","","","",""\n`;
+        const row = worksheet.addRow({
+          code: c.property_code || '',
+          name: c.property_name || '',
+          location: c.location || '',
+          department: c.department || '',
+          drp1: c.drp1 || '',
+          drp2: c.drp2 || ''
+        });
+
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: currentBg } };
+          cell.border = { bottom: { style: 'thin', color: { argb: 'CBD5E1' } } };
+        });
       } else {
         for (let i = 0; i < maxRows; i++) {
           const p = (c.parts && c.parts[i]) || {};
           const h = (c.history && c.history[i]) || {};
-          const partStr = `"${p.item_type || ''}","${p.brand || ''} ${p.model || ''}","${p.serial_number || ''}"`;
-          const repairStr = `"${h.log_date || ''}","${h.item || ''}","${h.remarks || ''}"`;
-          csv += `${base},${partStr},${repairStr}\n`;
+
+          const row = worksheet.addRow({
+            code: c.property_code || '',
+            name: c.property_name || '',
+            location: c.location || '',
+            department: c.department || '',
+            drp1: c.drp1 || '',
+            drp2: c.drp2 || '',
+            part_type: p.item_type || '',
+            part_model: `${p.brand || ''} ${p.model || ''}`.trim(),
+            part_sn: p.serial_number || '',
+            repair_date: h.log_date || '',
+            repair_item: h.item || '',
+            repair_tech: h.remarks || ''
+          });
+
+          row.eachCell({ includeEmpty: true }, (cell) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: currentBg } };
+            cell.border = {
+              bottom: { style: i === maxRows - 1 ? 'medium' : 'thin', color: { argb: 'CBD5E1' } }
+            };
+          });
         }
+      }
+
+      // Add space between computers if exporting multiple
+      if (computers.length > 1) {
+        worksheet.addRow([]);
       }
     });
 
-    res.setHeader('Content-Type', 'text/csv');
+    // Dynamic Filename
+    let filename = 'inventory_report.xlsx';
+    if (computers.length === 1 && computers[0].property_name) {
+      const sanitizedName = computers[0].property_name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      filename = `${sanitizedName}_report.xlsx`;
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(csv);
+
+    await workbook.xlsx.write(res);
+    res.end();
   } catch (err) {
+    console.error('Export Error:', err);
     res.status(500).send('Export failed');
   }
 });
