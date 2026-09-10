@@ -106,7 +106,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
   }
 });
 
-/* --- EXPORT EXCEL (.XLSX) WITH STYLING --- */
+/* --- EXPORT EXCEL (.XLSX) OPTIMIZED FOR 5-10 COMPUTERS PER PRINT PAGE --- */
 app.get('/api/export/excel', requireAdmin, async (req, res) => {
   try {
     const { computerId } = req.query;
@@ -118,90 +118,92 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
 
     const computers = await Computer.find(query);
 
-    // Initialize Excel Workbook and Sheet
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Computer Inventory');
 
-    // Setup Columns & Auto-Fit Widths
+    // Page setup optimized to fit 5-10 records per printed page
+    worksheet.pageSetup = {
+      orientation: 'landscape',
+      paperSize: 9, // A4
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      margins: { left: 0.25, right: 0.25, top: 0.3, bottom: 0.3, header: 0, footer: 0 }
+    };
+
+    // Scaled column widths to prevent page clipping
     worksheet.columns = [
-      { header: 'Computer Code', key: 'code', width: 20 },
-      { header: 'Computer Name', key: 'name', width: 20 },
+      { header: 'No.', key: 'no', width: 5 },
+      { header: 'Computer Code', key: 'code', width: 15 },
+      { header: 'Computer Name', key: 'name', width: 14 },
       { header: 'Location', key: 'location', width: 16 },
-      { header: 'Department', key: 'department', width: 16 },
-      { header: 'DRP1', key: 'drp1', width: 18 },
-      { header: 'DRP2', key: 'drp2', width: 18 },
-      { header: 'Part Type', key: 'part_type', width: 16 },
-      { header: 'Part Brand/Model', key: 'part_model', width: 28 },
-      { header: 'Part SN', key: 'part_sn', width: 24 },
-      { header: 'Repair Date', key: 'repair_date', width: 15 },
-      { header: 'Repair Item', key: 'repair_item', width: 22 },
-      { header: 'Repair Tech', key: 'repair_tech', width: 20 }
+      { header: 'Department', key: 'department', width: 10 },
+      { header: 'DRP1', key: 'drp1', width: 14 },
+      { header: 'DRP2', key: 'drp2', width: 14 },
+      { header: 'Part Type', key: 'part_type', width: 12 },
+      { header: 'Part Brand/Model', key: 'part_model', width: 22 }
     ];
 
-    // Format Main Header
+    // Compact Header Styling
     const headerRow = worksheet.getRow(1);
-    headerRow.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFF' } };
+    headerRow.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FFFFFF' } };
     headerRow.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: '1F4E79' } // Dark blue header fill
+      fgColor: { argb: '1F4E79' }
     };
-    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-    headerRow.height = 26;
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    headerRow.height = 20;
 
-    // Alternating shading per computer
-    const bgColors = ['F2F5F9', 'FFFFFF'];
+    let currentRowIdx = 2; // Track starting row index for merging
 
-    computers.forEach((c, index) => {
-      const currentBg = bgColors[index % 2];
-      const maxRows = Math.max((c.parts || []).length, (c.history || []).length);
+    computers.forEach((c, compIndex) => {
+      const parts = c.parts || [];
+      const rowCount = parts.length > 0 ? parts.length : 1;
+      const startRow = currentRowIdx;
 
-      if (maxRows === 0) {
+      for (let i = 0; i < rowCount; i++) {
+        const p = parts[i] || {};
+
         const row = worksheet.addRow({
+          no: compIndex + 1,
           code: c.property_code || '',
           name: c.property_name || '',
           location: c.location || '',
           department: c.department || '',
           drp1: c.drp1 || '',
-          drp2: c.drp2 || ''
+          drp2: c.drp2 || '',
+          part_type: p.item_type || '',
+          part_model: `${p.brand || ''} ${p.model || ''} ${p.serial_number ? '(' + p.serial_number + ')' : ''}`.trim()
         });
 
+        // Compact row height & 8pt font to allow high density per page
+        row.height = 14;
         row.eachCell({ includeEmpty: true }, (cell) => {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: currentBg } };
-          cell.border = { bottom: { style: 'thin', color: { argb: 'CBD5E1' } } };
+          cell.font = { name: 'Calibri', size: 8 };
+          cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+          cell.border = {
+            top: { style: 'thin', color: { argb: '000000' } },
+            bottom: { style: 'thin', color: { argb: '000000' } },
+            left: { style: 'thin', color: { argb: '000000' } },
+            right: { style: 'thin', color: { argb: '000000' } }
+          };
         });
-      } else {
-        for (let i = 0; i < maxRows; i++) {
-          const p = (c.parts && c.parts[i]) || {};
-          const h = (c.history && c.history[i]) || {};
 
-          const row = worksheet.addRow({
-            code: c.property_code || '',
-            name: c.property_name || '',
-            location: c.location || '',
-            department: c.department || '',
-            drp1: c.drp1 || '',
-            drp2: c.drp2 || '',
-            part_type: p.item_type || '',
-            part_model: `${p.brand || ''} ${p.model || ''}`.trim(),
-            part_sn: p.serial_number || '',
-            repair_date: h.log_date || '',
-            repair_item: h.item || '',
-            repair_tech: h.remarks || ''
-          });
-
-          row.eachCell({ includeEmpty: true }, (cell) => {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: currentBg } };
-            cell.border = {
-              bottom: { style: i === maxRows - 1 ? 'medium' : 'thin', color: { argb: 'CBD5E1' } }
-            };
-          });
-        }
+        currentRowIdx++;
       }
 
-      // Add space between computers if exporting multiple
-      if (computers.length > 1) {
-        worksheet.addRow([]);
+      const endRow = currentRowIdx - 1;
+
+      // Vertically merge computer metadata cells across all part rows
+      if (startRow < endRow) {
+        worksheet.mergeCells(`A${startRow}:A${endRow}`); // No.
+        worksheet.mergeCells(`B${startRow}:B${endRow}`); // Code
+        worksheet.mergeCells(`C${startRow}:C${endRow}`); // Name
+        worksheet.mergeCells(`D${startRow}:D${endRow}`); // Location
+        worksheet.mergeCells(`E${startRow}:E${endRow}`); // Department
+        worksheet.mergeCells(`F${startRow}:F${endRow}`); // DRP1
+        worksheet.mergeCells(`G${startRow}:G${endRow}`); // DRP2
       }
     });
 
@@ -327,4 +329,4 @@ app.delete('/api/technicians/:id', requireAdmin, async (req, res) => {
 // Wildcard route pointing directly to public/index.html
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));s
