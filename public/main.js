@@ -2,6 +2,7 @@ let inventory = [];
 let technicians = [];
 let selectedPCId = 'ALL';
 let expandedCards = {}; // Tracks details expansion state per card ID
+let currentUser = null;
 
 // Helper function to safely extract ID from MongoDB objects
 function getId(obj) {
@@ -9,10 +10,39 @@ function getId(obj) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  checkAuth();
   loadInventory();
   loadTechnicians();
 
   document.getElementById('search-input').addEventListener('input', () => filterData());
+
+  // Login Form Handler
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) {
+    loginForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('login-username').value;
+      const password = document.getElementById('login-password').value;
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        if (res.ok) {
+          closeModal('login-modal');
+          await checkAuth();
+          loadInventory();
+        } else {
+          alert('Invalid credentials!');
+        }
+      } catch (err) {
+        alert('Login failed: ' + err.message);
+      }
+    };
+  }
 
   // Workstation Form
   document.getElementById('add-workstation-form').onsubmit = async (e) => {
@@ -27,19 +57,16 @@ document.addEventListener('DOMContentLoaded', () => {
       drp2: document.getElementById('prop-drp2').value
     };
 
-    if (editId) {
-      await fetch(`/api/computers/${editId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-    } else {
-      await fetch('/api/computers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-    }
+    const url = editId ? `/api/computers/${editId}` : '/api/computers';
+    const method = editId ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.status === 401) return alert('Please log in first.');
 
     closeModal('workstation-modal');
     loadInventory();
@@ -59,19 +86,16 @@ document.addEventListener('DOMContentLoaded', () => {
       date_purchased: document.getElementById('part-date').value
     };
 
-    if (partId) {
-      await fetch(`/api/components/${partId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-    } else {
-      await fetch('/api/components', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-    }
+    const url = partId ? `/api/components/${partId}` : '/api/components';
+    const method = partId ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.status === 401) return alert('Please log in first.');
 
     closeModal('part-modal');
     loadInventory();
@@ -89,19 +113,16 @@ document.addEventListener('DOMContentLoaded', () => {
       remarks: document.getElementById('repair-remarks').value
     };
 
-    if (repairId) {
-      await fetch(`/api/repair-logs/${repairId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-    } else {
-      await fetch('/api/repair-logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-    }
+    const url = repairId ? `/api/repair-logs/${repairId}` : '/api/repair-logs';
+    const method = repairId ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.status === 401) return alert('Please log in first.');
 
     closeModal('repair-modal');
     loadInventory();
@@ -120,20 +141,104 @@ document.addEventListener('DOMContentLoaded', () => {
       body: JSON.stringify({ name })
     });
 
+    if (res.status === 401) return alert('Please log in first.');
+
     if (res.ok) {
       input.value = '';
       loadTechnicians();
     } else {
-      alert('Technician already exists.');
+      alert('Technician already exists or failed to add.');
     }
   };
 });
+
+/* Authentication & Dashboard Functions */
+
+async function checkAuth() {
+  try {
+    const res = await fetch('/api/auth/me');
+    const data = await res.json();
+    currentUser = data.user;
+
+    const userInfoEl = document.getElementById('user-info');
+    const authBtn = document.getElementById('auth-btn');
+
+    if (currentUser) {
+      if (userInfoEl) userInfoEl.innerHTML = `<span>Logged in as: <b>${currentUser.username}</b></span>`;
+      if (authBtn) {
+        authBtn.innerText = '🔓 Logout';
+        authBtn.onclick = logout;
+      }
+      loadDashboardStats();
+    } else {
+      if (userInfoEl) userInfoEl.innerHTML = `<span>View Only Mode</span>`;
+      if (authBtn) {
+        authBtn.innerText = '🔒 Login';
+        authBtn.onclick = () => openModal('login-modal');
+      }
+      updateDashboardUI(inventory.length, 0, 0, technicians.length);
+    }
+  } catch (err) {
+    console.error('Auth check error:', err);
+  }
+}
+
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  currentUser = null;
+  checkAuth();
+  loadInventory();
+}
+
+async function loadDashboardStats() {
+  try {
+    const res = await fetch('/api/dashboard/stats');
+    if (!res.ok) return calculateLocalStats();
+    const stats = await res.json();
+    updateDashboardUI(stats.totalComputers, stats.totalParts, stats.totalRepairs, stats.totalTechs);
+  } catch (err) {
+    calculateLocalStats();
+  }
+}
+
+function calculateLocalStats() {
+  let totalParts = 0;
+  let totalRepairs = 0;
+  inventory.forEach(item => {
+    totalParts += (item.parts || []).length;
+    totalRepairs += (item.history || []).length;
+  });
+  updateDashboardUI(inventory.length, totalParts, totalRepairs, technicians.length);
+}
+
+function updateDashboardUI(pcs, parts, repairs, techs) {
+  const pcEl = document.getElementById('stat-pcs');
+  const partEl = document.getElementById('stat-parts');
+  const repairEl = document.getElementById('stat-repairs');
+  const techEl = document.getElementById('stat-techs');
+
+  if (pcEl) pcEl.innerText = pcs;
+  if (partEl) partEl.innerText = parts;
+  if (repairEl) repairEl.innerText = repairs;
+  if (techEl) techEl.innerText = techs;
+}
+
+function exportToExcel() {
+  if (!currentUser) {
+    alert('Please log in to export inventory report.');
+    return openModal('login-modal');
+  }
+  window.location.href = '/api/export/excel';
+}
+
+/* Data Loaders & Renderers */
 
 async function loadInventory() {
   const res = await fetch('/api/inventory');
   inventory = await res.json();
   renderSidebar();
   filterData();
+  calculateLocalStats();
 }
 
 async function loadTechnicians() {
@@ -141,10 +246,12 @@ async function loadTechnicians() {
   technicians = await res.json();
   populateTechDropdown();
   renderTechManageList();
+  calculateLocalStats();
 }
 
 function populateTechDropdown() {
   const select = document.getElementById('repair-remarks');
+  if (!select) return;
   select.innerHTML = '<option value="" disabled selected>-- Select Technician --</option>';
   technicians.forEach(t => {
     const opt = document.createElement('option');
@@ -156,6 +263,7 @@ function populateTechDropdown() {
 
 function renderTechManageList() {
   const list = document.getElementById('tech-manage-list');
+  if (!list) return;
   list.innerHTML = technicians.length ? '' : '<li style="text-align:center; padding:0.5rem; color:#94a3b8;">No technicians found.</li>';
   
   technicians.forEach(t => {
@@ -172,7 +280,8 @@ function renderTechManageList() {
 
 async function deleteTech(id) {
   if (confirm('Remove this technician?')) {
-    await fetch(`/api/technicians/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/technicians/${id}`, { method: 'DELETE' });
+    if (res.status === 401) return alert('Please log in first.');
     loadTechnicians();
   }
 }
@@ -180,6 +289,7 @@ async function deleteTech(id) {
 // Render Alphabetical Sidebar
 function renderSidebar() {
   const sidebar = document.getElementById('pc-list-sidebar');
+  if (!sidebar) return;
   sidebar.innerHTML = `<li class="${selectedPCId === 'ALL' ? 'active' : ''}" onclick="filterByPC('ALL')">💻 All PCs</li>`;
 
   // Sort Alphabetically by property name
@@ -203,7 +313,8 @@ function filterByPC(id) {
 }
 
 function filterData() {
-  const query = document.getElementById('search-input').value.toLowerCase();
+  const queryInput = document.getElementById('search-input');
+  const query = queryInput ? queryInput.value.toLowerCase() : '';
   let filtered = inventory;
 
   if (selectedPCId !== 'ALL') {
@@ -229,6 +340,7 @@ function toggleDetails(id) {
 
 function render(data) {
   const container = document.getElementById('inventory-list');
+  if (!container) return;
   container.innerHTML = data.length ? '' : '<p style="text-align:center; padding: 2rem;">No records found.</p>';
 
   data.forEach(item => {
@@ -319,9 +431,17 @@ function render(data) {
   });
 }
 
-function openModal(id) { document.getElementById(id).classList.add('active'); }
+/* Modals & Forms Handlers */
+
+function openModal(id) { 
+  const modal = document.getElementById(id);
+  if (modal) modal.classList.add('active'); 
+}
+
 function closeModal(id) { 
-  document.getElementById(id).classList.remove('active'); 
+  const modal = document.getElementById(id);
+  if (modal) modal.classList.remove('active'); 
+
   if (id === 'workstation-modal') {
     document.getElementById('edit-comp-id').value = '';
     document.getElementById('workstation-modal-title').innerText = 'Add Workstation';
@@ -407,6 +527,28 @@ function editRepair(compId, repairId) {
   openModal('repair-modal');
 }
 
-async function deleteComp(id) { if(confirm('Delete workstation?')) { await fetch(`/api/computers/${id}`, {method:'DELETE'}); loadInventory(); } }
-async function deletePart(id) { if(confirm('Delete part?')) { await fetch(`/api/components/${id}`, {method:'DELETE'}); loadInventory(); } }
-async function deleteRepair(id) { if(confirm('Delete log?')) { await fetch(`/api/repair-logs/${id}`, {method:'DELETE'}); loadInventory(); } }
+/* Delete Operations */
+
+async function deleteComp(id) { 
+  if(confirm('Delete workstation?')) { 
+    const res = await fetch(`/api/computers/${id}`, {method:'DELETE'}); 
+    if (res.status === 401) return alert('Please log in first.');
+    loadInventory(); 
+  } 
+}
+
+async function deletePart(id) { 
+  if(confirm('Delete part?')) { 
+    const res = await fetch(`/api/components/${id}`, {method:'DELETE'}); 
+    if (res.status === 401) return alert('Please log in first.');
+    loadInventory(); 
+  } 
+}
+
+async function deleteRepair(id) { 
+  if(confirm('Delete log?')) { 
+    const res = await fetch(`/api/repair-logs/${id}`, {method:'DELETE'}); 
+    if (res.status === 401) return alert('Please log in first.');
+    loadInventory(); 
+  } 
+}

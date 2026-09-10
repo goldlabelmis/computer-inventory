@@ -11,8 +11,10 @@
       <h2>🖥️ 168 Computer Inventory</h2>
       <div class="actions">
         <input type="text" id="search-input" placeholder="Search..." class="search-bar">
+        <button class="btn btn-outline" onclick="exportToExcel()">📊 Export Excel</button>
         <button class="btn btn-outline" onclick="openTechModal()">🛠️ Technicians</button>
         <button class="btn btn-primary" onclick="openModal('workstation-modal')">+ Add Workstation</button>
+        <button id="auth-btn" class="btn btn-warning" onclick="openModal('login-modal')">🔒 Login</button>
       </div>
     </div>
   </header>
@@ -28,8 +30,54 @@
 
     <!-- MAIN CONTENT -->
     <main class="main-content">
+      <!-- USER STATUS BAR -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <div id="user-info"><span>View Only Mode</span></div>
+      </div>
+
+      <!-- ANALYTICS DASHBOARD WIDGET -->
+      <div id="analytics-dashboard" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="card" style="padding: 1rem; text-align: center; background: var(--bg-card, #fff); border: 1px solid var(--border, #e2e8f0); border-radius: 8px;">
+          <h4 style="margin: 0; color: #64748b; font-size: 0.9rem;">💻 Total PCs</h4>
+          <h2 id="stat-pcs" style="margin: 0.5rem 0 0 0; font-size: 1.8rem;">0</h2>
+        </div>
+        <div class="card" style="padding: 1rem; text-align: center; background: var(--bg-card, #fff); border: 1px solid var(--border, #e2e8f0); border-radius: 8px;">
+          <h4 style="margin: 0; color: #64748b; font-size: 0.9rem;">🧩 Total Parts</h4>
+          <h2 id="stat-parts" style="margin: 0.5rem 0 0 0; font-size: 1.8rem;">0</h2>
+        </div>
+        <div class="card" style="padding: 1rem; text-align: center; background: var(--bg-card, #fff); border: 1px solid var(--border, #e2e8f0); border-radius: 8px;">
+          <h4 style="margin: 0; color: #64748b; font-size: 0.9rem;">🛠️ Total Repairs</h4>
+          <h2 id="stat-repairs" style="margin: 0.5rem 0 0 0; font-size: 1.8rem;">0</h2>
+        </div>
+        <div class="card" style="padding: 1rem; text-align: center; background: var(--bg-card, #fff); border: 1px solid var(--border, #e2e8f0); border-radius: 8px;">
+          <h4 style="margin: 0; color: #64748b; font-size: 0.9rem;">👤 Technicians</h4>
+          <h2 id="stat-techs" style="margin: 0.5rem 0 0 0; font-size: 1.8rem;">0</h2>
+        </div>
+      </div>
+
       <div id="inventory-list"></div>
     </main>
+  </div>
+
+  <!-- MODAL: LOGIN -->
+  <div id="login-modal" class="modal">
+    <div class="modal-card" style="max-width: 360px;">
+      <h3>🔒 User Login</h3>
+      <form id="login-form">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="login-username" placeholder="admin" required>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" required>
+        </div>
+        <div class="modal-actions" style="margin-top: 1.5rem;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('login-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Sign In</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <!-- MODAL: ADD / EDIT WORKSTATION -->
