@@ -106,7 +106,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
   }
 });
 
-/* --- EXPORT EXCEL (.XLSX) OPTIMIZED FOR 5-10 COMPUTERS PER PRINT PAGE --- */
+/* --- EXPORT EXCEL (.XLSX) WITH AUTOMATIC AUTO-FIT & CLEAN LAYOUT --- */
 app.get('/api/export/excel', requireAdmin, async (req, res) => {
   try {
     const { computerId } = req.query;
@@ -121,7 +121,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Computer Inventory');
 
-    // Page setup optimized to fit 5-10 records per printed page
+    // Page setup optimized to fit 5-10 records per printed landscape page
     worksheet.pageSetup = {
       orientation: 'landscape',
       paperSize: 9, // A4
@@ -131,20 +131,20 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       margins: { left: 0.25, right: 0.25, top: 0.3, bottom: 0.3, header: 0, footer: 0 }
     };
 
-    // Scaled column widths to prevent page clipping
+    // Adjusted column widths to fit content and avoid overflow
     worksheet.columns = [
       { header: 'No.', key: 'no', width: 5 },
-      { header: 'Computer Code', key: 'code', width: 15 },
+      { header: 'Computer Code', key: 'code', width: 16 },
       { header: 'Computer Name', key: 'name', width: 14 },
-      { header: 'Location', key: 'location', width: 16 },
+      { header: 'Location', key: 'location', width: 18 },
       { header: 'Department', key: 'department', width: 10 },
       { header: 'DRP1', key: 'drp1', width: 14 },
       { header: 'DRP2', key: 'drp2', width: 14 },
-      { header: 'Part Type', key: 'part_type', width: 12 },
-      { header: 'Part Brand/Model', key: 'part_model', width: 22 }
+      { header: 'Part Type', key: 'part_type', width: 13 },
+      { header: 'Part Brand/Model', key: 'part_model', width: 35 } // Expanded width
     ];
 
-    // Compact Header Styling
+    // Header Styling
     const headerRow = worksheet.getRow(1);
     headerRow.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FFFFFF' } };
     headerRow.fill = {
@@ -164,6 +164,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
 
       for (let i = 0; i < rowCount; i++) {
         const p = parts[i] || {};
+        const partModelStr = `${p.brand || ''} ${p.model || ''} ${p.serial_number ? '(' + p.serial_number + ')' : ''}`.trim();
 
         const row = worksheet.addRow({
           no: compIndex + 1,
@@ -174,11 +175,12 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
           drp1: c.drp1 || '',
           drp2: c.drp2 || '',
           part_type: p.item_type || '',
-          part_model: `${p.brand || ''} ${p.model || ''} ${p.serial_number ? '(' + p.serial_number + ')' : ''}`.trim()
+          part_model: partModelStr
         });
 
-        // Compact row height & 8pt font to allow high density per page
-        row.height = 14;
+        // Dynamic row height adjustment prevents text clipping on multi-line values
+        row.height = partModelStr.length > 30 ? 26 : 18;
+
         row.eachCell({ includeEmpty: true }, (cell) => {
           cell.font = { name: 'Calibri', size: 8 };
           cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
