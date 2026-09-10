@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // 1. Connect to MongoDB Atlas
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://<username>:<password>@cluster.mongodb.net/inventory_db?retryWrites=true&w=majority';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://<username>:<password>@cluster.mongodb.net/computer_inventory?retryWrites=true&w=majority';
 
 mongoose.connect(MONGO_URI)
   .then(() => console.log('🍃 Connected to MongoDB Atlas'))
@@ -51,10 +51,12 @@ const Technician = mongoose.model('Technician', TechnicianSchema);
 // Express Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(__dirname));
+
+// Serve static assets from 'public' directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(session({
-  secret: 'super-secret-inventory-key',
+  secret: process.env.SESSION_SECRET || 'super-secret-inventory-key',
   resave: false,
   saveUninitialized: false,
   cookie: { maxAge: 24 * 60 * 60 * 1000 }
@@ -235,6 +237,7 @@ app.delete('/api/technicians/:id', requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+// Wildcard route pointing directly to public/index.html
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
