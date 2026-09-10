@@ -106,7 +106,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
   }
 });
 
-/* --- EXPORT EXCEL (.XLSX) WITH CUSTOM PERIPHERAL & SYSTEM COLUMNS --- */
+/* --- EXPORT EXCEL (.XLSX) OPTIMIZED FOR PRINT --- */
 app.get('/api/export/excel', requireAdmin, async (req, res) => {
   try {
     const { computerId } = req.query;
@@ -121,57 +121,56 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Computer Inventory');
 
-    // Page setup optimized for Landscape and fitting 1 page wide
+    // Page setup optimized for Landscape printing
     worksheet.pageSetup = {
       orientation: 'landscape',
       paperSize: 9, // A4
       fitToPage: true,
       fitToWidth: 1,
       fitToHeight: 0,
-      margins: { left: 0.25, right: 0.25, top: 0.3, bottom: 0.3, header: 0, footer: 0 }
+      margins: { left: 0.2, right: 0.2, top: 0.25, bottom: 0.25, header: 0, footer: 0 }
     };
 
-    // Excel Column Definitions
+    // Compact Column Widths to allow all 13 columns to print cleanly on 1 page width
     worksheet.columns = [
-      { header: 'No.', key: 'no', width: 5 },
-      { header: 'Computer Code', key: 'code', width: 15 },
-      { header: 'Computer Name', key: 'name', width: 14 },
-      { header: 'Location', key: 'location', width: 18 },
-      { header: 'Department', key: 'department', width: 10 },
-      { header: 'DRP1', key: 'drp1', width: 14 },
-      { header: 'DRP2', key: 'drp2', width: 14 },
-      { header: 'System Unit Components (CPU, RAM, Motherboard, SSD, HDD, Case)', key: 'system_components', width: 35 },
-      { header: 'Monitor', key: 'monitor', width: 24 },
-      { header: 'Keyboard', key: 'keyboard', width: 24 },
-      { header: 'Mouse', key: 'mouse', width: 24 },
-      { header: 'UPS', key: 'ups', width: 24 },
-      { header: 'Remarks', key: 'remarks', width: 20 }
+      { header: 'No.', key: 'no', width: 4 },
+      { header: 'Computer Code', key: 'code', width: 13 },
+      { header: 'Computer Name', key: 'name', width: 11 },
+      { header: 'Location', key: 'location', width: 14 },
+      { header: 'Department', key: 'department', width: 8 },
+      { header: 'DRP1', key: 'drp1', width: 11 },
+      { header: 'DRP2', key: 'drp2', width: 11 },
+      { header: 'System Unit Components (CPU, RAM, Motherboard, SSD, HDD, Case)', key: 'system_components', width: 28 },
+      { header: 'Monitor', key: 'monitor', width: 16 },
+      { header: 'Keyboard', key: 'keyboard', width: 16 },
+      { header: 'Mouse', key: 'mouse', width: 16 },
+      { header: 'UPS', key: 'ups', width: 16 },
+      { header: 'Remarks', key: 'remarks', width: 14 } // Left blank for manual entry/signatures
     ];
 
     // Header Row Styling
     const headerRow = worksheet.getRow(1);
-    headerRow.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FFFFFF' } };
+    headerRow.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: 'FFFFFF' } };
     headerRow.fill = {
       type: 'pattern',
       pattern: 'solid',
       fgColor: { argb: '1F4E79' }
     };
     headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    headerRow.height = 28;
+    headerRow.height = 26;
 
-    // Helper formatter for individual peripheral entries (e.g. "MSI 3PEO (PEOM115A00772)")
+    // Helper formatter for individual peripheral entries
     const formatPart = (part) => {
       if (!part) return '';
       const brandModel = `${part.brand || ''} ${part.model || ''}`.trim();
-      const serial = part.serial_number ? ` (${part.serial_number})` : '';
+      const serial = part.serial_number ? `\n(${part.serial_number})` : '';
       return `${brandModel}${serial}`.trim();
     };
 
     computers.forEach((c, compIndex) => {
       const parts = c.parts || [];
-      const history = c.history || [];
 
-      // Filter core system components
+      // Filter core system unit components
       const systemTypes = ['cpu', 'ram', 'motherboard', 'ssd', 'hdd', 'case', 'casing', 'storage'];
       const systemParts = parts.filter(p => systemTypes.includes((p.item_type || '').toLowerCase()));
 
@@ -193,12 +192,6 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       const mouseText = mouseParts.map(formatPart).join('\n');
       const upsText = upsParts.map(formatPart).join('\n');
 
-      // Combine repair history remarks
-      const remarksSummary = history
-        .map(h => h.remarks || h.description)
-        .filter(Boolean)
-        .join('\n');
-
       const row = worksheet.addRow({
         no: compIndex + 1,
         code: c.property_code || '',
@@ -212,26 +205,25 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
         keyboard: keyboardText,
         mouse: mouseText,
         ups: upsText,
-        remarks: remarksSummary || ''
+        remarks: '' // Intentionally left blank as requested
       });
 
-      // Adjust height to prevent text clipping
+      // Calculate row height dynamically for clear print spacing
       const lineCounts = [
         systemParts.length,
-        monitorParts.length,
-        keyboardParts.length,
-        mouseParts.length,
-        upsParts.length,
-        history.length,
+        monitorParts.length * 2,
+        keyboardParts.length * 2,
+        mouseParts.length * 2,
+        upsParts.length * 2,
         1
       ];
       const maxLines = Math.max(...lineCounts);
-      row.height = Math.max(20, maxLines * 12);
+      row.height = Math.max(18, maxLines * 11);
 
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        cell.font = { name: 'Calibri', size: 8 };
+        cell.font = { name: 'Calibri', size: 7.5 };
         
-        // Left-align system components, center peripherals, remarks, and basic info
+        // System components (Col 8) left aligned, others centered
         const isLeftAligned = colNumber === 8;
         cell.alignment = { 
           vertical: 'middle', 
