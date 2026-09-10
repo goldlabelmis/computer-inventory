@@ -9,12 +9,17 @@ function getId(obj) {
   return obj ? (obj.id || obj._id || '') : '';
 }
 
+// Helper to check if current user is an administrator
+function isAdmin() {
+  return currentUser && currentUser.role === 'administrator';
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   checkAuth();
   loadInventory();
   loadTechnicians();
 
-  document.getElementById('search-input').addEventListener('input', () => filterData());
+  document.getElementById('search-input')?.addEventListener('input', () => filterData());
 
   // Login Form Handler
   const loginForm = document.getElementById('login-form');
@@ -45,111 +50,123 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Workstation Form
-  document.getElementById('add-workstation-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const editId = document.getElementById('edit-comp-id').value;
-    const payload = {
-      property_name: document.getElementById('prop-name').value,
-      property_code: document.getElementById('prop-code').value,
-      location: document.getElementById('prop-loc').value,
-      department: document.getElementById('prop-dept').value,
-      drp1: document.getElementById('prop-drp1').value,
-      drp2: document.getElementById('prop-drp2').value
+  const workstationForm = document.getElementById('add-workstation-form');
+  if (workstationForm) {
+    workstationForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const editId = document.getElementById('edit-comp-id').value;
+      const payload = {
+        property_name: document.getElementById('prop-name').value,
+        property_code: document.getElementById('prop-code').value,
+        location: document.getElementById('prop-loc').value,
+        department: document.getElementById('prop-dept').value,
+        drp1: document.getElementById('prop-drp1').value,
+        drp2: document.getElementById('prop-drp2').value
+      };
+
+      const url = editId ? `/api/computers/${editId}` : '/api/computers';
+      const method = editId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.status === 401 || res.status === 403) return alert('Admin access required.');
+
+      closeModal('workstation-modal');
+      loadInventory();
     };
-
-    const url = editId ? `/api/computers/${editId}` : '/api/computers';
-    const method = editId ? 'PUT' : 'POST';
-
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (res.status === 401) return alert('Please log in first.');
-
-    closeModal('workstation-modal');
-    loadInventory();
-  };
+  }
 
   // Add / Edit Part Form
-  document.getElementById('add-part-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const partId = document.getElementById('part-id').value;
-    const payload = {
-      computer_id: document.getElementById('part-comp-id').value,
-      item_type: document.getElementById('part-type').value,
-      brand: document.getElementById('part-brand').value,
-      model: document.getElementById('part-model').value,
-      specs: document.getElementById('part-specs').value,
-      serial_number: document.getElementById('part-sn').value,
-      date_purchased: document.getElementById('part-date').value
+  const partForm = document.getElementById('add-part-form');
+  if (partForm) {
+    partForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const partId = document.getElementById('part-id').value;
+      const payload = {
+        computer_id: document.getElementById('part-comp-id').value,
+        item_type: document.getElementById('part-type').value,
+        brand: document.getElementById('part-brand').value,
+        model: document.getElementById('part-model').value,
+        specs: document.getElementById('part-specs').value,
+        serial_number: document.getElementById('part-sn').value,
+        date_purchased: document.getElementById('part-date').value
+      };
+
+      const url = partId ? `/api/components/${partId}` : '/api/components';
+      const method = partId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.status === 401 || res.status === 403) return alert('Admin access required.');
+
+      closeModal('part-modal');
+      loadInventory();
     };
-
-    const url = partId ? `/api/components/${partId}` : '/api/components';
-    const method = partId ? 'PUT' : 'POST';
-
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (res.status === 401) return alert('Please log in first.');
-
-    closeModal('part-modal');
-    loadInventory();
-  };
+  }
 
   // Add / Edit Repair Form
-  document.getElementById('add-repair-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const repairId = document.getElementById('repair-id').value;
-    const payload = {
-      computer_id: document.getElementById('repair-comp-id').value,
-      log_date: document.getElementById('repair-date').value,
-      item: document.getElementById('repair-item').value,
-      description: document.getElementById('repair-desc').value,
-      remarks: document.getElementById('repair-remarks').value
+  const repairForm = document.getElementById('add-repair-form');
+  if (repairForm) {
+    repairForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const repairId = document.getElementById('repair-id').value;
+      const payload = {
+        computer_id: document.getElementById('repair-comp-id').value,
+        log_date: document.getElementById('repair-date').value,
+        item: document.getElementById('repair-item').value,
+        description: document.getElementById('repair-desc').value,
+        remarks: document.getElementById('repair-remarks').value
+      };
+
+      const url = repairId ? `/api/repair-logs/${repairId}` : '/api/repair-logs';
+      const method = repairId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.status === 401 || res.status === 403) return alert('Admin access required.');
+
+      closeModal('repair-modal');
+      loadInventory();
     };
-
-    const url = repairId ? `/api/repair-logs/${repairId}` : '/api/repair-logs';
-    const method = repairId ? 'PUT' : 'POST';
-
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (res.status === 401) return alert('Please log in first.');
-
-    closeModal('repair-modal');
-    loadInventory();
-  };
+  }
 
   // Technician Form
-  document.getElementById('add-tech-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const input = document.getElementById('new-tech-name');
-    const name = input.value.trim();
-    if (!name) return;
+  const techForm = document.getElementById('add-tech-form');
+  if (techForm) {
+    techForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('new-tech-name');
+      const name = input.value.trim();
+      if (!name) return;
 
-    const res = await fetch('/api/technicians', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    });
+      const res = await fetch('/api/technicians', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
 
-    if (res.status === 401) return alert('Please log in first.');
+      if (res.status === 401 || res.status === 403) return alert('Admin access required.');
 
-    if (res.ok) {
-      input.value = '';
-      loadTechnicians();
-    } else {
-      alert('Technician already exists or failed to add.');
-    }
-  };
+      if (res.ok) {
+        input.value = '';
+        loadTechnicians();
+      } else {
+        alert('Technician already exists or failed to add.');
+      }
+    };
+  }
 });
 
 /* Authentication & Dashboard Functions */
@@ -164,7 +181,7 @@ async function checkAuth() {
     const authBtn = document.getElementById('auth-btn');
 
     if (currentUser) {
-      if (userInfoEl) userInfoEl.innerHTML = `<span>Logged in as: <b>${currentUser.username}</b></span>`;
+      if (userInfoEl) userInfoEl.innerHTML = `<span>Logged in as: <b>${currentUser.username}</b> (${currentUser.role})</span>`;
       if (authBtn) {
         authBtn.innerText = '🔓 Logout';
         authBtn.onclick = logout;
@@ -178,9 +195,20 @@ async function checkAuth() {
       }
       updateDashboardUI(inventory.length, 0, 0, technicians.length);
     }
+
+    // Toggle global administrative action buttons in UI
+    toggleAdminControls();
+    
+    // Re-render dataset to apply dynamic column visibility
+    filterData();
   } catch (err) {
     console.error('Auth check error:', err);
   }
+}
+
+function toggleAdminControls() {
+  // Toggle CSS class on body for css rules targeting body:not(.is-admin) .admin-only
+  document.body.classList.toggle('is-admin', isAdmin());
 }
 
 async function logout() {
@@ -224,8 +252,8 @@ function updateDashboardUI(pcs, parts, repairs, techs) {
 }
 
 function exportToExcel() {
-  if (!currentUser) {
-    alert('Please log in to export inventory report.');
+  if (!isAdmin()) {
+    alert('Admin privileges required to export inventory reports.');
     return openModal('login-modal');
   }
   window.location.href = '/api/export/excel';
@@ -272,16 +300,17 @@ function renderTechManageList() {
     li.className = 'tech-item';
     li.innerHTML = `
       <span>👤 ${t.name}</span>
-      <button class="btn btn-sm btn-danger" onclick="deleteTech('${techId}')">❌</button>
+      ${isAdmin() ? `<button class="btn btn-sm btn-danger" onclick="deleteTech('${techId}')">❌</button>` : ''}
     `;
     list.appendChild(li);
   });
 }
 
 async function deleteTech(id) {
+  if (!isAdmin()) return alert('Admin access required.');
   if (confirm('Remove this technician?')) {
     const res = await fetch(`/api/technicians/${id}`, { method: 'DELETE' });
-    if (res.status === 401) return alert('Please log in first.');
+    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
     loadTechnicians();
   }
 }
@@ -350,6 +379,10 @@ function render(data) {
     const isSingleSelection = selectedPCId !== 'ALL';
     const isExpanded = isSingleSelection ? true : !!expandedCards[itemId];
 
+    // Conditionally render Action header/columns for Admin users
+    const actionHeader = isAdmin() ? '<th>Action</th>' : '';
+    const tableColspan = isAdmin() ? 5 : 4;
+
     const partsRows = (item.parts || []).map(p => {
       const partId = getId(p);
       return `
@@ -358,10 +391,12 @@ function render(data) {
           <td>${p.brand || ''} ${p.model || ''}</td>
           <td>${p.specs || ''} ${p.serial_number ? '(SN: ' + p.serial_number + ')' : ''}</td>
           <td>${p.date_purchased || '-'}</td>
-          <td style="white-space: nowrap;">
-            <button class="btn btn-sm btn-warning" onclick="editPart('${itemId}', '${partId}')">✏️</button>
-            <button class="btn btn-sm btn-danger" onclick="deletePart('${partId}')">❌</button>
-          </td>
+          ${isAdmin() ? `
+            <td style="white-space: nowrap;">
+              <button class="btn btn-sm btn-warning" onclick="editPart('${itemId}', '${partId}')">✏️</button>
+              <button class="btn btn-sm btn-danger" onclick="deletePart('${partId}')">❌</button>
+            </td>
+          ` : ''}
         </tr>
       `;
     }).join('');
@@ -374,10 +409,12 @@ function render(data) {
           <td><strong>${h.item || '-'}</strong></td>
           <td>${h.description || '-'}</td>
           <td>${h.remarks || '-'}</td>
-          <td style="white-space: nowrap;">
-            <button class="btn btn-sm btn-warning" onclick="editRepair('${itemId}', '${repairId}')">✏️</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteRepair('${repairId}')">❌</button>
-          </td>
+          ${isAdmin() ? `
+            <td style="white-space: nowrap;">
+              <button class="btn btn-sm btn-warning" onclick="editRepair('${itemId}', '${repairId}')">✏️</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteRepair('${repairId}')">❌</button>
+            </td>
+          ` : ''}
         </tr>
       `;
     }).join('');
@@ -400,8 +437,10 @@ function render(data) {
               ${isExpanded ? 'Hide Details' : 'Show Details'}
             </button>
           ` : ''}
-          <button class="btn btn-sm btn-warning" onclick="editWorkstation('${itemId}')">✏️ Edit</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteComp('${itemId}')">Delete Unit</button>
+          ${isAdmin() ? `
+            <button class="btn btn-sm btn-warning" onclick="editWorkstation('${itemId}')">✏️ Edit</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteComp('${itemId}')">Delete Unit</button>
+          ` : ''}
         </div>
       </div>
 
@@ -409,20 +448,20 @@ function render(data) {
       <div class="details-section" style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem;">
         <div class="sub-header">
           <h4>Parts & Peripherals</h4>
-          <button class="btn btn-sm btn-outline" onclick="openPartModal('${itemId}')">+ Add Part</button>
+          ${isAdmin() ? `<button class="btn btn-sm btn-outline" onclick="openPartModal('${itemId}')">+ Add Part</button>` : ''}
         </div>
         <table>
-          <thead><tr><th>Type</th><th>Brand/Model</th><th>Specs / SN</th><th>Date</th><th>Action</th></tr></thead>
-          <tbody>${partsRows || '<tr><td colspan="5">No parts recorded.</td></tr>'}</tbody>
+          <thead><tr><th>Type</th><th>Brand/Model</th><th>Specs / SN</th><th>Date</th>${actionHeader}</tr></thead>
+          <tbody>${partsRows || `<tr><td colspan="${tableColspan}">No parts recorded.</td></tr>`}</tbody>
         </table>
 
         <div class="sub-header">
           <h4>🛠️ Maintenance & Repair History</h4>
-          <button class="btn btn-sm btn-outline" onclick="openRepairModal('${itemId}')">+ Log Repair</button>
+          ${isAdmin() ? `<button class="btn btn-sm btn-outline" onclick="openRepairModal('${itemId}')">+ Log Repair</button>` : ''}
         </div>
         <table>
-          <thead><tr><th>Date</th><th>Item</th><th>Description</th><th>Tech</th><th>Action</th></tr></thead>
-          <tbody>${repairRows || '<tr><td colspan="5">No repair logs recorded.</td></tr>'}</tbody>
+          <thead><tr><th>Date</th><th>Item</th><th>Description</th><th>Tech</th>${actionHeader}</tr></thead>
+          <tbody>${repairRows || `<tr><td colspan="${tableColspan}">No repair logs recorded.</td></tr>`}</tbody>
         </table>
       </div>
       ` : ''}
@@ -460,6 +499,7 @@ function closeModal(id) {
 }
 
 function openPartModal(compId) { 
+  if (!isAdmin()) return alert('Admin access required.');
   document.getElementById('part-id').value = '';
   document.getElementById('part-comp-id').value = compId; 
   document.getElementById('part-modal-title').innerText = 'Add Part';
@@ -467,15 +507,20 @@ function openPartModal(compId) {
 }
 
 function openRepairModal(compId) { 
+  if (!isAdmin()) return alert('Admin access required.');
   document.getElementById('repair-id').value = '';
   document.getElementById('repair-comp-id').value = compId; 
   document.getElementById('repair-modal-title').innerText = 'Log Repair';
   openModal('repair-modal'); 
 }
 
-function openTechModal() { openModal('tech-modal'); }
+function openTechModal() { 
+  if (!isAdmin()) return alert('Admin access required.');
+  openModal('tech-modal'); 
+}
 
 function editWorkstation(id) {
+  if (!isAdmin()) return alert('Admin access required.');
   const item = inventory.find(c => getId(c) === id);
   if (!item) return;
 
@@ -492,6 +537,7 @@ function editWorkstation(id) {
 }
 
 function editPart(compId, partId) {
+  if (!isAdmin()) return alert('Admin access required.');
   const comp = inventory.find(c => getId(c) === compId);
   if (!comp) return;
   const part = (comp.parts || []).find(p => getId(p) === partId);
@@ -511,6 +557,7 @@ function editPart(compId, partId) {
 }
 
 function editRepair(compId, repairId) {
+  if (!isAdmin()) return alert('Admin access required.');
   const comp = inventory.find(c => getId(c) === compId);
   if (!comp) return;
   const log = (comp.history || []).find(h => getId(h) === repairId);
@@ -530,25 +577,28 @@ function editRepair(compId, repairId) {
 /* Delete Operations */
 
 async function deleteComp(id) { 
-  if(confirm('Delete workstation?')) { 
-    const res = await fetch(`/api/computers/${id}`, {method:'DELETE'}); 
-    if (res.status === 401) return alert('Please log in first.');
+  if (!isAdmin()) return alert('Admin access required.');
+  if (confirm('Delete workstation?')) { 
+    const res = await fetch(`/api/computers/${id}`, { method: 'DELETE' }); 
+    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
     loadInventory(); 
   } 
 }
 
 async function deletePart(id) { 
-  if(confirm('Delete part?')) { 
-    const res = await fetch(`/api/components/${id}`, {method:'DELETE'}); 
-    if (res.status === 401) return alert('Please log in first.');
+  if (!isAdmin()) return alert('Admin access required.');
+  if (confirm('Delete part?')) { 
+    const res = await fetch(`/api/components/${id}`, { method: 'DELETE' }); 
+    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
     loadInventory(); 
   } 
 }
 
 async function deleteRepair(id) { 
-  if(confirm('Delete log?')) { 
-    const res = await fetch(`/api/repair-logs/${id}`, {method:'DELETE'}); 
-    if (res.status === 401) return alert('Please log in first.');
+  if (!isAdmin()) return alert('Admin access required.');
+  if (confirm('Delete log?')) { 
+    const res = await fetch(`/api/repair-logs/${id}`, { method: 'DELETE' }); 
+    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
     loadInventory(); 
   } 
 }

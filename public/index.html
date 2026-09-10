@@ -11,9 +11,9 @@
       <h2>🖥️ 168 Computer Inventory</h2>
       <div class="actions">
         <input type="text" id="search-input" placeholder="Search..." class="search-bar">
-        <button class="btn btn-outline" onclick="exportToExcel()">📊 Export Excel</button>
-        <button class="btn btn-outline" onclick="openTechModal()">🛠️ Technicians</button>
-        <button class="btn btn-primary" onclick="openModal('workstation-modal')">+ Add Workstation</button>
+        <button class="btn btn-outline admin-only" onclick="exportToExcel()">📊 Export Excel</button>
+        <button class="btn btn-outline admin-only" onclick="openTechModal()">🛠️ Technicians</button>
+        <button class="btn btn-primary admin-only" onclick="openModal('workstation-modal')">+ Add Workstation</button>
         <button id="auth-btn" class="btn btn-warning" onclick="openModal('login-modal')">🔒 Login</button>
       </div>
     </div>
@@ -66,7 +66,7 @@
       <form id="login-form">
         <div class="form-group">
           <label>Username</label>
-          <input type="text" id="login-username" placeholder="admin" required>
+          <input type="text" id="login-username" placeholder="GoldlabelMis" required>
         </div>
         <div class="form-group">
           <label>Password</label>
@@ -161,7 +161,7 @@
   <div id="tech-modal" class="modal">
     <div class="modal-card">
       <h3>Manage Technicians</h3>
-      <form id="add-tech-form" style="margin-bottom: 1rem;">
+      <form id="add-tech-form" class="admin-only" style="margin-bottom: 1rem;">
         <div class="form-row">
           <div class="form-group" style="margin: 0;">
             <input type="text" id="new-tech-name" placeholder="Enter technician name..." required>

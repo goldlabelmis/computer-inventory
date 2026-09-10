@@ -49,6 +49,11 @@ html, body { height: 100vh; overflow: hidden; font-family: system-ui, -apple-sys
 }
 .search-bar::placeholder { color: var(--text-muted); }
 
+/* ADMIN-ONLY VISIBILITY CONTROL */
+body:not(.is-admin) .admin-only {
+  display: none !important;
+}
+
 /* USER STATUS BADGE */
 #user-info span {
   font-size: 0.85rem;
