@@ -134,21 +134,21 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
     // Compact Column Widths
     worksheet.columns = [
       { header: 'No.', key: 'no', width: 4 },
-      { header: 'Computer Code', key: 'code', width: 13 },
-      { header: 'Computer Name', key: 'name', width: 11 },
-      { header: 'Location', key: 'location', width: 14 },
-      { header: 'Department', key: 'department', width: 8 },
-      { header: 'DRP1', key: 'drp1', width: 11 },
-      { header: 'DRP2', key: 'drp2', width: 11 },
-      { header: 'System Unit Components (CPU, RAM, Motherboard, SSD, HDD, Case)', key: 'system_components', width: 32 },
-      { header: 'Monitor', key: 'monitor', width: 16 },
-      { header: 'Keyboard', key: 'keyboard', width: 16 },
-      { header: 'Mouse', key: 'mouse', width: 16 },
-      { header: 'UPS', key: 'ups', width: 16 },
-      { header: 'Remarks', key: 'remarks', width: 14 }
+      { header: 'Computer Code', key: 'code', width: 14 },
+      { header: 'Computer Name', key: 'name', width: 12 },
+      { header: 'Location', key: 'location', width: 16 },
+      { header: 'Department', key: 'department', width: 10 },
+      { header: 'DRP1', key: 'drp1', width: 12 },
+      { header: 'DRP2', key: 'drp2', width: 12 },
+      { header: 'System Unit Components (CPU, RAM, Motherboard, SSD, HDD, Case)', key: 'system_components', width: 34 },
+      { header: 'Monitor', key: 'monitor', width: 18 },
+      { header: 'Keyboard', key: 'keyboard', width: 18 },
+      { header: 'Mouse', key: 'mouse', width: 18 },
+      { header: 'UPS', key: 'ups', width: 22 },
+      { header: 'Remarks', key: 'remarks', width: 12 }
     ];
 
-    // Header Row Styling
+    // Header Row Styling (Dark Blue Theme)
     const headerRow = worksheet.getRow(1);
     headerRow.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: 'FFFFFF' } };
     headerRow.fill = {
@@ -157,10 +157,10 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       fgColor: { argb: '1F4E79' }
     };
     headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    headerRow.height = 26;
+    headerRow.height = 28;
 
-    // Helper function to format ALL details of a component
-    const formatPart = (part) => {
+    // Formatter for System Unit Components Column (CPU, RAM, Motherboard, etc.)
+    const formatSystemComponent = (part) => {
       if (!part) return '';
       const type = part.item_type ? `${part.item_type.toUpperCase()}: ` : '';
       const brandModel = `${part.brand || ''} ${part.model || ''}`.trim();
@@ -169,7 +169,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       return `${type}${brandModel}${specs}${serial}`.trim();
     };
 
-    // Helper for peripherals column formatting
+    // Formatter for Peripheral Columns (Monitor, Keyboard, Mouse, UPS)
     const formatPeripheral = (part) => {
       if (!part) return '';
       const brandModel = `${part.brand || ''} ${part.model || ''}`.trim();
@@ -184,7 +184,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       // Core system components
       const systemTypes = ['cpu', 'ram', 'motherboard', 'ssd', 'hdd', 'case', 'casing', 'storage'];
       const systemParts = parts.filter(p => systemTypes.includes((p.item_type || '').toLowerCase()));
-      const systemComponentsSummary = systemParts.map(formatPart).join('\n');
+      const systemComponentsSummary = systemParts.map(formatSystemComponent).join('\n');
 
       // Peripherals
       const monitorParts = parts.filter(p => (p.item_type || '').toLowerCase() === 'monitor');
@@ -213,20 +213,22 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
         remarks: ''
       });
 
-      // Calculate row height dynamically based on content length
-      const lineCounts = [
+      // Calculate dynamic row height to keep entries clean and clear
+      const maxLines = Math.max(
         systemParts.length,
         monitorParts.length * 2,
         keyboardParts.length * 2,
         mouseParts.length * 2,
         upsParts.length * 2,
         1
-      ];
-      const maxLines = Math.max(...lineCounts);
-      row.height = Math.max(18, maxLines * 11);
+      );
+      row.height = Math.max(22, maxLines * 12);
 
+      // Cell Borders and Text Alignment
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         cell.font = { name: 'Calibri', size: 7.5 };
+        
+        // System unit components (Column 8) left-aligned; others centered
         const isLeftAligned = colNumber === 8;
         cell.alignment = { 
           vertical: 'middle', 
