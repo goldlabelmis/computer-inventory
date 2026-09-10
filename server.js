@@ -141,10 +141,10 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       { header: 'DRP1', key: 'drp1', width: 12 },
       { header: 'DRP2', key: 'drp2', width: 12 },
       { header: 'System Unit Components (CPU, RAM, Motherboard, SSD, HDD, Case)', key: 'system_components', width: 34 },
-      { header: 'Monitor', key: 'monitor', width: 18 },
-      { header: 'Keyboard', key: 'keyboard', width: 18 },
-      { header: 'Mouse', key: 'mouse', width: 18 },
-      { header: 'UPS', key: 'ups', width: 22 },
+      { header: 'Monitor', key: 'monitor', width: 22 },
+      { header: 'Keyboard', key: 'keyboard', width: 22 },
+      { header: 'Mouse', key: 'mouse', width: 22 },
+      { header: 'UPS', key: 'ups', width: 24 },
       { header: 'Remarks', key: 'remarks', width: 12 }
     ];
 
@@ -159,7 +159,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
     headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     headerRow.height = 28;
 
-    // Formatter for System Unit Components Column (CPU, RAM, Motherboard, etc.)
+    // Formatter for System Unit Components Column
     const formatSystemComponent = (part) => {
       if (!part) return '';
       const type = part.item_type ? `${part.item_type.toUpperCase()}: ` : '';
@@ -169,13 +169,23 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       return `${type}${brandModel}${specs}${serial}`.trim();
     };
 
-    // Formatter for Peripheral Columns (Monitor, Keyboard, Mouse, UPS)
-    const formatPeripheral = (part) => {
+    // Explicit Label Formatter for Peripheral Columns (Monitor, Keyboard, Mouse, UPS)
+    const formatPeripheralWithLabels = (part) => {
       if (!part) return '';
-      const brandModel = `${part.brand || ''} ${part.model || ''}`.trim();
-      const specs = part.specs ? ` - ${part.specs}` : '';
-      const serial = part.serial_number ? `\n(${part.serial_number})` : '';
-      return `${brandModel}${specs}${serial}`.trim();
+      const lines = [];
+
+      if (part.brand) lines.push(`BRAND: ${part.brand.trim()}`);
+      if (part.model) lines.push(`MODEL: ${part.model.trim()}`);
+      if (part.specs) lines.push(`SPECS: ${part.specs.trim()}`);
+      if (part.serial_number) lines.push(`SN: ${part.serial_number.trim()}`);
+
+      // Fallback in case brand/model are saved together without explicit fields
+      if (lines.length === 0) {
+        const fallback = `${part.brand || ''} ${part.model || ''}`.trim();
+        if (fallback) lines.push(fallback);
+      }
+
+      return lines.join('\n');
     };
 
     computers.forEach((c, compIndex) => {
@@ -192,10 +202,10 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       const mouseParts = parts.filter(p => (p.item_type || '').toLowerCase() === 'mouse');
       const upsParts = parts.filter(p => (p.item_type || '').toLowerCase() === 'ups');
 
-      const monitorText = monitorParts.map(formatPeripheral).join('\n');
-      const keyboardText = keyboardParts.map(formatPeripheral).join('\n');
-      const mouseText = mouseParts.map(formatPeripheral).join('\n');
-      const upsText = upsParts.map(formatPeripheral).join('\n');
+      const monitorText = monitorParts.map(formatPeripheralWithLabels).join('\n---\n');
+      const keyboardText = keyboardParts.map(formatPeripheralWithLabels).join('\n---\n');
+      const mouseText = mouseParts.map(formatPeripheralWithLabels).join('\n---\n');
+      const upsText = upsParts.map(formatPeripheralWithLabels).join('\n---\n');
 
       const row = worksheet.addRow({
         no: compIndex + 1,
@@ -213,22 +223,22 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
         remarks: ''
       });
 
-      // Calculate dynamic row height to keep entries clean and clear
+      // Calculate dynamic row height to fit explicitly labeled fields
       const maxLines = Math.max(
         systemParts.length,
-        monitorParts.length * 2,
-        keyboardParts.length * 2,
-        mouseParts.length * 2,
-        upsParts.length * 2,
+        monitorParts.length * 3,
+        keyboardParts.length * 3,
+        mouseParts.length * 3,
+        upsParts.length * 3,
         1
       );
-      row.height = Math.max(22, maxLines * 12);
+      row.height = Math.max(24, maxLines * 11);
 
-      // Cell Borders and Text Alignment
+      // Cell Borders and Alignment
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         cell.font = { name: 'Calibri', size: 7.5 };
         
-        // System unit components (Column 8) left-aligned; others centered
+        // Align System components to the left; keep all other fields centered
         const isLeftAligned = colNumber === 8;
         cell.alignment = { 
           vertical: 'middle', 
