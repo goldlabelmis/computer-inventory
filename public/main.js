@@ -284,7 +284,7 @@ function exportToExcel() {
     alert('Admin privileges required to export inventory reports.');
     return openModal('login-modal');
   }
-  window.location.href = '/api/export/excel';
+  window.location.href = `/api/export/excel?computerId=${encodeURIComponent(selectedPCId)}`;
 }
 
 /* DATA LOADERS & RENDERERS */

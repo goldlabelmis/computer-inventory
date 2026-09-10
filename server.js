@@ -108,19 +108,33 @@ app.get('/api/dashboard/stats', async (req, res) => {
 /* --- EXPORT CSV/EXCEL --- */
 app.get('/api/export/excel', requireAdmin, async (req, res) => {
   try {
-    const computers = await Computer.find();
+    const { computerId } = req.query;
+
+    let query = {};
+    if (computerId && computerId !== 'ALL') {
+      query = { _id: computerId };
+    }
+
+    const computers = await Computer.find(query);
+
+    let filename = 'inventory_report.csv';
+    if (computers.length === 1 && computers[0].property_name) {
+      const sanitizedName = computers[0].property_name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      filename = `${sanitizedName}_report.csv`;
+    }
+
     let csv = 'Computer Code,Computer Name,Location,Department,DRP1,DRP2,Part Type,Part Brand/Model,Part SN,Repair Date,Repair Item,Repair Tech\n';
 
     computers.forEach(c => {
       const base = `"${c.property_code}","${c.property_name}","${c.location || ''}","${c.department || ''}","${c.drp1 || ''}","${c.drp2 || ''}"`;
-      const maxRows = Math.max(c.parts.length, c.history.length);
+      const maxRows = Math.max((c.parts || []).length, (c.history || []).length);
 
       if (maxRows === 0) {
         csv += `${base},"","","","","",""\n`;
       } else {
         for (let i = 0; i < maxRows; i++) {
-          const p = c.parts[i] || {};
-          const h = c.history[i] || {};
+          const p = (c.parts && c.parts[i]) || {};
+          const h = (c.history && c.history[i]) || {};
           const partStr = `"${p.item_type || ''}","${p.brand || ''} ${p.model || ''}","${p.serial_number || ''}"`;
           const repairStr = `"${h.log_date || ''}","${h.item || ''}","${h.remarks || ''}"`;
           csv += `${base},${partStr},${repairStr}\n`;
@@ -129,7 +143,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
     });
 
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="inventory_report.csv"');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
   } catch (err) {
     res.status(500).send('Export failed');
