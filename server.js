@@ -106,7 +106,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
   }
 });
 
-/* --- EXPORT EXCEL (.XLSX) WITH REMARKS COLUMN --- */
+/* --- EXPORT EXCEL (.XLSX) WITH CUSTOM PERIPHERAL & SYSTEM COLUMNS --- */
 app.get('/api/export/excel', requireAdmin, async (req, res) => {
   try {
     const { computerId } = req.query;
@@ -121,7 +121,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Computer Inventory');
 
-    // Print setup optimized for Landscape and fitting 1 page wide
+    // Page setup optimized for Landscape and fitting 1 page wide
     worksheet.pageSetup = {
       orientation: 'landscape',
       paperSize: 9, // A4
@@ -131,17 +131,21 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       margins: { left: 0.25, right: 0.25, top: 0.3, bottom: 0.3, header: 0, footer: 0 }
     };
 
-    // Columns configuration including Column I (Remarks)
+    // Excel Column Definitions
     worksheet.columns = [
       { header: 'No.', key: 'no', width: 5 },
-      { header: 'Computer Code', key: 'code', width: 16 },
+      { header: 'Computer Code', key: 'code', width: 15 },
       { header: 'Computer Name', key: 'name', width: 14 },
       { header: 'Location', key: 'location', width: 18 },
       { header: 'Department', key: 'department', width: 10 },
       { header: 'DRP1', key: 'drp1', width: 14 },
       { header: 'DRP2', key: 'drp2', width: 14 },
-      { header: 'System Components (CPU, RAM, Motherboard, Storage, etc.)', key: 'specs_summary', width: 50 },
-      { header: 'Remarks', key: 'remarks', width: 25 } // Added Column I
+      { header: 'System Unit Components (CPU, RAM, Motherboard, SSD, HDD, Case)', key: 'system_components', width: 35 },
+      { header: 'Monitor', key: 'monitor', width: 24 },
+      { header: 'Keyboard', key: 'keyboard', width: 24 },
+      { header: 'Mouse', key: 'mouse', width: 24 },
+      { header: 'UPS', key: 'ups', width: 24 },
+      { header: 'Remarks', key: 'remarks', width: 20 }
     ];
 
     // Header Row Styling
@@ -153,21 +157,43 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       fgColor: { argb: '1F4E79' }
     };
     headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    headerRow.height = 22;
+    headerRow.height = 28;
+
+    // Helper formatter for individual peripheral entries (e.g. "MSI 3PEO (PEOM115A00772)")
+    const formatPart = (part) => {
+      if (!part) return '';
+      const brandModel = `${part.brand || ''} ${part.model || ''}`.trim();
+      const serial = part.serial_number ? ` (${part.serial_number})` : '';
+      return `${brandModel}${serial}`.trim();
+    };
 
     computers.forEach((c, compIndex) => {
       const parts = c.parts || [];
       const history = c.history || [];
-      
-      // Combine components into one clean multiline block
-      const specsSummary = parts.map(p => {
+
+      // Filter core system components
+      const systemTypes = ['cpu', 'ram', 'motherboard', 'ssd', 'hdd', 'case', 'casing', 'storage'];
+      const systemParts = parts.filter(p => systemTypes.includes((p.item_type || '').toLowerCase()));
+
+      const systemComponentsSummary = systemParts.map(p => {
         const type = p.item_type ? `${p.item_type.toUpperCase()}: ` : '';
         const brandModel = `${p.brand || ''} ${p.model || ''}`.trim();
         const serial = p.serial_number ? ` (SN: ${p.serial_number})` : '';
         return `${type}${brandModel}${serial}`;
       }).join('\n');
 
-      // Aggregate repair history remarks into a single multiline string
+      // Separate explicit peripheral types into individual columns
+      const monitorParts = parts.filter(p => (p.item_type || '').toLowerCase() === 'monitor');
+      const keyboardParts = parts.filter(p => (p.item_type || '').toLowerCase() === 'keyboard');
+      const mouseParts = parts.filter(p => (p.item_type || '').toLowerCase() === 'mouse');
+      const upsParts = parts.filter(p => (p.item_type || '').toLowerCase() === 'ups');
+
+      const monitorText = monitorParts.map(formatPart).join('\n');
+      const keyboardText = keyboardParts.map(formatPart).join('\n');
+      const mouseText = mouseParts.map(formatPart).join('\n');
+      const upsText = upsParts.map(formatPart).join('\n');
+
+      // Combine repair history remarks
       const remarksSummary = history
         .map(h => h.remarks || h.description)
         .filter(Boolean)
@@ -181,19 +207,32 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
         department: c.department || '',
         drp1: c.drp1 || '',
         drp2: c.drp2 || '',
-        specs_summary: specsSummary || 'No specs listed',
+        system_components: systemComponentsSummary || '',
+        monitor: monitorText,
+        keyboard: keyboardText,
+        mouse: mouseText,
+        ups: upsText,
         remarks: remarksSummary || ''
       });
 
-      // Adjust height to prevent text wrapping clipping
-      const maxLines = Math.max(parts.length, history.length, 1);
-      row.height = Math.max(18, maxLines * 11);
+      // Adjust height to prevent text clipping
+      const lineCounts = [
+        systemParts.length,
+        monitorParts.length,
+        keyboardParts.length,
+        mouseParts.length,
+        upsParts.length,
+        history.length,
+        1
+      ];
+      const maxLines = Math.max(...lineCounts);
+      row.height = Math.max(20, maxLines * 12);
 
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         cell.font = { name: 'Calibri', size: 8 };
         
-        // Left-align specs (Column H) and remarks (Column I), center the rest
-        const isLeftAligned = colNumber === 8 || colNumber === 9;
+        // Left-align system components, center peripherals, remarks, and basic info
+        const isLeftAligned = colNumber === 8;
         cell.alignment = { 
           vertical: 'middle', 
           horizontal: isLeftAligned ? 'left' : 'center', 
