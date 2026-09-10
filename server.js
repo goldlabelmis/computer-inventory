@@ -106,7 +106,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
   }
 });
 
-/* --- EXPORT EXCEL (.XLSX) WITH AUTOMATIC AUTO-FIT & CLEAN LAYOUT --- */
+/* --- EXPORT EXCEL (.XLSX) - COMPACT SINGLE COLUMN SPECS FOR HIGH PRINT DENSITY --- */
 app.get('/api/export/excel', requireAdmin, async (req, res) => {
   try {
     const { computerId } = req.query;
@@ -121,7 +121,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Computer Inventory');
 
-    // Page setup optimized to fit 5-10 records per printed landscape page
+    // Print setup optimized for Landscape and fitting 1 page wide
     worksheet.pageSetup = {
       orientation: 'landscape',
       paperSize: 9, // A4
@@ -131,7 +131,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       margins: { left: 0.25, right: 0.25, top: 0.3, bottom: 0.3, header: 0, footer: 0 }
     };
 
-    // Adjusted column widths to fit content and avoid overflow
+    // Columns configured to keep each computer on a single row
     worksheet.columns = [
       { header: 'No.', key: 'no', width: 5 },
       { header: 'Computer Code', key: 'code', width: 16 },
@@ -140,11 +140,10 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       { header: 'Department', key: 'department', width: 10 },
       { header: 'DRP1', key: 'drp1', width: 14 },
       { header: 'DRP2', key: 'drp2', width: 14 },
-      { header: 'Part Type', key: 'part_type', width: 13 },
-      { header: 'Part Brand/Model', key: 'part_model', width: 35 } // Expanded width
+      { header: 'System Components (CPU, RAM, Motherboard, Storage, etc.)', key: 'specs_summary', width: 55 }
     ];
 
-    // Header Styling
+    // Header Row Styling
     const headerRow = worksheet.getRow(1);
     headerRow.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FFFFFF' } };
     headerRow.fill = {
@@ -153,63 +152,49 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       fgColor: { argb: '1F4E79' }
     };
     headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    headerRow.height = 20;
-
-    let currentRowIdx = 2; // Track starting row index for merging
+    headerRow.height = 22;
 
     computers.forEach((c, compIndex) => {
       const parts = c.parts || [];
-      const rowCount = parts.length > 0 ? parts.length : 1;
-      const startRow = currentRowIdx;
+      
+      // Combine CPU, RAM, SSD, HDD, and Motherboard into one clean multiline block
+      const specsSummary = parts.map(p => {
+        const type = p.item_type ? `${p.item_type.toUpperCase()}: ` : '';
+        const brandModel = `${p.brand || ''} ${p.model || ''}`.trim();
+        const serial = p.serial_number ? ` (SN: ${p.serial_number})` : '';
+        return `${type}${brandModel}${serial}`;
+      }).join('\n');
 
-      for (let i = 0; i < rowCount; i++) {
-        const p = parts[i] || {};
-        const partModelStr = `${p.brand || ''} ${p.model || ''} ${p.serial_number ? '(' + p.serial_number + ')' : ''}`.trim();
+      const row = worksheet.addRow({
+        no: compIndex + 1,
+        code: c.property_code || '',
+        name: c.property_name || '',
+        location: c.location || '',
+        department: c.department || '',
+        drp1: c.drp1 || '',
+        drp2: c.drp2 || '',
+        specs_summary: specsSummary || 'No specs listed'
+      });
 
-        const row = worksheet.addRow({
-          no: compIndex + 1,
-          code: c.property_code || '',
-          name: c.property_name || '',
-          location: c.location || '',
-          department: c.department || '',
-          drp1: c.drp1 || '',
-          drp2: c.drp2 || '',
-          part_type: p.item_type || '',
-          part_model: partModelStr
-        });
+      // Calculate row height dynamically based on part count to prevent text clipping
+      row.height = Math.max(18, parts.length * 11);
 
-        // Dynamic row height adjustment prevents text clipping on multi-line values
-        row.height = partModelStr.length > 30 ? 26 : 18;
-
-        row.eachCell({ includeEmpty: true }, (cell) => {
-          cell.font = { name: 'Calibri', size: 8 };
-          cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-          cell.border = {
-            top: { style: 'thin', color: { argb: '000000' } },
-            bottom: { style: 'thin', color: { argb: '000000' } },
-            left: { style: 'thin', color: { argb: '000000' } },
-            right: { style: 'thin', color: { argb: '000000' } }
-          };
-        });
-
-        currentRowIdx++;
-      }
-
-      const endRow = currentRowIdx - 1;
-
-      // Vertically merge computer metadata cells across all part rows
-      if (startRow < endRow) {
-        worksheet.mergeCells(`A${startRow}:A${endRow}`); // No.
-        worksheet.mergeCells(`B${startRow}:B${endRow}`); // Code
-        worksheet.mergeCells(`C${startRow}:C${endRow}`); // Name
-        worksheet.mergeCells(`D${startRow}:D${endRow}`); // Location
-        worksheet.mergeCells(`E${startRow}:E${endRow}`); // Department
-        worksheet.mergeCells(`F${startRow}:F${endRow}`); // DRP1
-        worksheet.mergeCells(`G${startRow}:G${endRow}`); // DRP2
-      }
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        cell.font = { name: 'Calibri', size: 8 };
+        cell.alignment = { 
+          vertical: 'middle', 
+          horizontal: colNumber === 8 ? 'left' : 'center', 
+          wrapText: true 
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: '000000' } },
+          bottom: { style: 'thin', color: { argb: '000000' } },
+          left: { style: 'thin', color: { argb: '000000' } },
+          right: { style: 'thin', color: { argb: '000000' } }
+        };
+      });
     });
 
-    // Dynamic Filename
     let filename = 'inventory_report.xlsx';
     if (computers.length === 1 && computers[0].property_name) {
       const sanitizedName = computers[0].property_name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
