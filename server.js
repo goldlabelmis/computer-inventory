@@ -1,151 +1,247 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const mongoose = require('mongoose');
 const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const db = new sqlite3.Database('./inventory.db');
-db.run('PRAGMA foreign_keys = ON;');
+// Connect to MongoDB Atlas using the Render Environment Variable
+const MONGODB_URI = process.env.DATABASE_URL;
 
-db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS computers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    property_name TEXT, property_code TEXT UNIQUE,
-    location TEXT, department TEXT, drp1 TEXT, drp2 TEXT
-  )`);
+if (!MONGODB_URI) {
+  console.error('CRITICAL ERROR: DATABASE_URL environment variable is missing!');
+}
 
-  db.run(`CREATE TABLE IF NOT EXISTS components (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    computer_id INTEGER, item_type TEXT, brand TEXT,
-    model TEXT, specs TEXT, serial_number TEXT, date_purchased TEXT,
-    FOREIGN KEY(computer_id) REFERENCES computers(id) ON DELETE CASCADE
-  )`);
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('Successfully connected to MongoDB Atlas!'))
+  .catch(err => console.error('MongoDB Atlas connection error:', err));
 
-  db.run(`CREATE TABLE IF NOT EXISTS repair_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    computer_id INTEGER, log_date TEXT, item TEXT,
-    description TEXT, remarks TEXT,
-    FOREIGN KEY(computer_id) REFERENCES computers(id) ON DELETE CASCADE
-  )`);
+/* MONGODB SCHEMAS & MODELS */
 
-  db.run(`CREATE TABLE IF NOT EXISTS technicians (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL
-  )`, () => {
-    db.get(`SELECT COUNT(*) as count FROM technicians`, (err, row) => {
-      if (row && row.count === 0) {
-        const stmt = db.prepare(`INSERT INTO technicians (name) VALUES (?)`);
-        ['Joram', 'Reinner', 'Edrian', 'Riel'].forEach(tech => stmt.run(tech));
-        stmt.finalize();
-      }
+// Sub-document schema for computer parts
+const PartSchema = new mongoose.Schema({
+  item_type: String,
+  brand: String,
+  model: String,
+  specs: String,
+  serial_number: String,
+  date_purchased: String
+});
+
+// Sub-document schema for repair history logs
+const RepairSchema = new mongoose.Schema({
+  log_date: String,
+  item: String,
+  description: String,
+  remarks: String
+});
+
+// Main Workstation / Computer Schema
+const ComputerSchema = new mongoose.Schema({
+  property_name: String,
+  property_code: { type: String, unique: true, required: true },
+  location: String,
+  department: String,
+  drp1: String,
+  drp2: String,
+  parts: [PartSchema],
+  history: [RepairSchema]
+});
+
+// Technician Schema
+const TechnicianSchema = new mongoose.Schema({
+  name: { type: String, unique: true, required: true }
+});
+
+const Computer = mongoose.model('Computer', ComputerSchema);
+const Technician = mongoose.model('Technician', TechnicianSchema);
+
+// Initial default seed for technicians
+async function seedTechnicians() {
+  try {
+    const count = await Technician.countDocuments();
+    if (count === 0) {
+      const defaultTechs = ['Joram', 'Reinner', 'Edrian', 'Riel'];
+      await Technician.insertMany(defaultTechs.map(name => ({ name })));
+      console.log('Default technicians seeded successfully.');
+    }
+  } catch (err) {
+    console.error('Error seeding default technicians:', err);
+  }
+}
+seedTechnicians();
+
+/* REST API ENDPOINTS */
+
+// Get all computers with populated parts and history
+app.get('/api/inventory', async (req, res) => {
+  try {
+    const computers = await Computer.find().sort({ property_name: 1 });
+    
+    // Format _id fields to string 'id' for frontend compatibility
+    const formatted = computers.map(comp => {
+      const obj = comp.toObject();
+      obj.id = obj._id.toString();
+      obj.parts = (obj.parts || []).map(p => ({ ...p, id: p._id.toString() }));
+      obj.history = (obj.history || []).map(h => ({ ...h, id: h._id.toString() }));
+      return obj;
     });
-  });
+    
+    res.json(formatted);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-/* API ENDPOINTS */
-app.get('/api/inventory', (req, res) => {
-  const query = `
-    SELECT c.*, 
-      COALESCE((SELECT json_group_array(json_object(
-        'id', comp.id, 'item_type', comp.item_type, 'brand', comp.brand, 
-        'model', comp.model, 'specs', comp.specs, 'serial_number', comp.serial_number, 'date_purchased', comp.date_purchased
-      )) FROM components comp WHERE comp.computer_id = c.id), '[]') as parts,
-      COALESCE((SELECT json_group_array(json_object(
-        'id', log.id, 'log_date', log.log_date, 'item', log.item, 
-        'description', log.description, 'remarks', log.remarks
-      )) FROM repair_logs log WHERE log.computer_id = c.id), '[]') as history
-    FROM computers c ORDER BY c.property_name ASC`;
-
-  db.all(query, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows.map(r => ({ ...r, parts: JSON.parse(r.parts), history: JSON.parse(r.history) })));
-  });
+// Add new Computer / Workstation
+app.post('/api/computers', async (req, res) => {
+  try {
+    const comp = new Computer(req.body);
+    await comp.save();
+    res.json({ id: comp._id.toString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.post('/api/computers', (req, res) => {
-  const { property_name, property_code, location, department, drp1, drp2 } = req.body;
-  db.run(`INSERT INTO computers (property_name, property_code, location, department, drp1, drp2) VALUES (?, ?, ?, ?, ?, ?)`,
-    [property_name, property_code, location, department, drp1, drp2],
-    function(err) { res.json({ id: this.lastID }); }
-  );
+// Update Computer details
+app.put('/api/computers/:id', async (req, res) => {
+  try {
+    await Computer.findByIdAndUpdate(req.params.id, req.body);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.put('/api/computers/:id', (req, res) => {
-  const { property_name, property_code, location, department, drp1, drp2 } = req.body;
-  db.run(`UPDATE computers SET property_name=?, property_code=?, location=?, department=?, drp1=?, drp2=? WHERE id=?`,
-    [property_name, property_code, location, department, drp1, drp2, req.params.id],
-    function(err) { res.json({ success: true }); }
-  );
+// Delete Computer
+app.delete('/api/computers/:id', async (req, res) => {
+  try {
+    await Computer.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-/* PARTS API */
-app.post('/api/components', (req, res) => {
-  const { computer_id, item_type, brand, model, specs, serial_number, date_purchased } = req.body;
-  db.run(`INSERT INTO components (computer_id, item_type, brand, model, specs, serial_number, date_purchased) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [computer_id, item_type, brand, model, specs, serial_number, date_purchased],
-    function(err) { res.json({ id: this.lastID }); }
-  );
+// Add Component / Part to a Computer
+app.post('/api/components', async (req, res) => {
+  const { computer_id, ...partData } = req.body;
+  try {
+    const comp = await Computer.findById(computer_id);
+    if (!comp) return res.status(404).json({ error: 'Computer not found' });
+    
+    comp.parts.push(partData);
+    await comp.save();
+    const newPart = comp.parts[comp.parts.length - 1];
+    res.json({ id: newPart._id.toString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.put('/api/components/:id', (req, res) => {
-  const { item_type, brand, model, specs, serial_number, date_purchased } = req.body;
-  db.run(`UPDATE components SET item_type=?, brand=?, model=?, specs=?, serial_number=?, date_purchased=? WHERE id=?`,
-    [item_type, brand, model, specs, serial_number, date_purchased, req.params.id],
-    function(err) { res.json({ success: true }); }
-  );
+// Update Component / Part
+app.put('/api/components/:id', async (req, res) => {
+  try {
+    const comp = await Computer.findOne({ "parts._id": req.params.id });
+    if (!comp) return res.status(404).json({ error: 'Part not found' });
+    
+    const part = comp.parts.id(req.params.id);
+    Object.assign(part, req.body);
+    await comp.save();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-/* REPAIR LOGS API */
-app.post('/api/repair-logs', (req, res) => {
-  const { computer_id, log_date, item, description, remarks } = req.body;
-  db.run(`INSERT INTO repair_logs (computer_id, log_date, item, description, remarks) VALUES (?, ?, ?, ?, ?)`,
-    [computer_id, log_date, item, description, remarks],
-    function(err) { res.json({ id: this.lastID }); }
-  );
+// Delete Component / Part
+app.delete('/api/components/:id', async (req, res) => {
+  try {
+    await Computer.updateOne({}, { $pull: { parts: { _id: req.params.id } } });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.put('/api/repair-logs/:id', (req, res) => {
-  const { log_date, item, description, remarks } = req.body;
-  db.run(`UPDATE repair_logs SET log_date=?, item=?, description=?, remarks=? WHERE id=?`,
-    [log_date, item, description, remarks, req.params.id],
-    function(err) { res.json({ success: true }); }
-  );
+// Add Repair Log to a Computer
+app.post('/api/repair-logs', async (req, res) => {
+  const { computer_id, ...logData } = req.body;
+  try {
+    const comp = await Computer.findById(computer_id);
+    if (!comp) return res.status(404).json({ error: 'Computer not found' });
+    
+    comp.history.push(logData);
+    await comp.save();
+    const newLog = comp.history[comp.history.length - 1];
+    res.json({ id: newLog._id.toString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.delete('/api/computers/:id', (req, res) => {
-  db.run(`DELETE FROM computers WHERE id = ?`, [req.params.id], () => res.json({ success: true }));
+// Update Repair Log
+app.put('/api/repair-logs/:id', async (req, res) => {
+  try {
+    const comp = await Computer.findOne({ "history._id": req.params.id });
+    if (!comp) return res.status(404).json({ error: 'Repair log not found' });
+    
+    const log = comp.history.id(req.params.id);
+    Object.assign(log, req.body);
+    await comp.save();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.delete('/api/components/:id', (req, res) => {
-  db.run(`DELETE FROM components WHERE id = ?`, [req.params.id], () => res.json({ success: true }));
+// Delete Repair Log
+app.delete('/api/repair-logs/:id', async (req, res) => {
+  try {
+    await Computer.updateOne({}, { $pull: { history: { _id: req.params.id } } });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.delete('/api/repair-logs/:id', (req, res) => {
-  db.run(`DELETE FROM repair_logs WHERE id = ?`, [req.params.id], () => res.json({ success: true }));
+// Get Technicians
+app.get('/api/technicians', async (req, res) => {
+  try {
+    const techs = await Technician.find().sort({ name: 1 });
+    res.json(techs.map(t => ({ id: t._id.toString(), name: t.name })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-/* TECHNICIANS API */
-app.get('/api/technicians', (req, res) => {
-  db.all(`SELECT * FROM technicians ORDER BY name ASC`, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
+// Add Technician
+app.post('/api/technicians', async (req, res) => {
+  try {
+    const tech = new Technician({ name: req.body.name });
+    await tech.save();
+    res.json({ id: tech._id.toString(), name: tech.name });
+  } catch (err) {
+    res.status(400).json({ error: 'Technician already exists.' });
+  }
 });
 
-app.post('/api/technicians', (req, res) => {
-  const { name } = req.body;
-  db.run(`INSERT INTO technicians (name) VALUES (?)`, [name], function(err) {
-    if (err) return res.status(400).json({ error: 'Technician already exists or invalid.' });
-    res.json({ id: this.lastID, name });
-  });
+// Delete Technician
+app.delete('/api/technicians/:id', async (req, res) => {
+  try {
+    await Technician.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.delete('/api/technicians/:id', (req, res) => {
-  db.run(`DELETE FROM technicians WHERE id = ?`, [req.params.id], () => res.json({ success: true }));
+// Start Server
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on port ${PORT}`);
 });
-
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on http://localhost:${PORT}`));
