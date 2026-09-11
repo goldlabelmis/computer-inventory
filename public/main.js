@@ -4,6 +4,18 @@ let selectedPCId = 'ALL';
 let expandedCards = {};
 let currentUser = null;
 
+// HELPER: HTML Sanitization
+function escapeHtml(str) {
+  if (typeof str !== 'string') return str || '';
+  return str.replace(/[&<>"']/g, (m) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  }[m]));
+}
+
 // GLOBAL MODAL CONTROLS
 window.openModal = function(id) { 
   const modal = document.getElementById(id);
@@ -40,7 +52,7 @@ window.onclick = function(event) {
 };
 
 function getId(obj) {
-  return obj ? (obj.id || obj._id || '') : '';
+  return obj ? String(obj.id || obj._id || '') : '';
 }
 
 function isAdmin() {
@@ -240,7 +252,7 @@ async function checkAuth() {
     const authBtn = document.getElementById('auth-btn');
 
     if (currentUser) {
-      if (userInfoEl) userInfoEl.innerHTML = `<span>Logged in as: <b>${currentUser.username}</b> (${currentUser.role})</span>`;
+      if (userInfoEl) userInfoEl.innerHTML = `<span>Logged in as: <b>${escapeHtml(currentUser.username)}</b> (${escapeHtml(currentUser.role)})</span>`;
       if (authBtn) {
         authBtn.innerText = '🔓 Logout';
         authBtn.className = 'btn btn-danger';
@@ -258,7 +270,7 @@ async function checkAuth() {
     }
 
     toggleAdminControls();
-    renderTechManageList(); // Refresh list UI after currentUser role resolved
+    renderTechManageList();
     filterData();
   } catch (err) {
     console.error('Auth check error:', err);
@@ -319,19 +331,27 @@ function exportToExcel() {
 
 /* DATA LOADERS & RENDERERS */
 async function loadInventory() {
-  const res = await fetch('/api/inventory');
-  inventory = await res.json();
-  renderSidebar();
-  filterData();
-  calculateLocalStats();
+  try {
+    const res = await fetch('/api/inventory');
+    inventory = await res.json();
+    renderSidebar();
+    filterData();
+    calculateLocalStats();
+  } catch (err) {
+    console.error('Failed to load inventory:', err);
+  }
 }
 
 async function loadTechnicians() {
-  const res = await fetch('/api/technicians');
-  technicians = await res.json();
-  populateTechDropdown();
-  renderTechManageList();
-  calculateLocalStats();
+  try {
+    const res = await fetch('/api/technicians');
+    technicians = await res.json();
+    populateTechDropdown();
+    renderTechManageList();
+    calculateLocalStats();
+  } catch (err) {
+    console.error('Failed to load technicians:', err);
+  }
 }
 
 function populateTechDropdown() {
@@ -355,10 +375,10 @@ function renderTechManageList() {
     const techId = getId(t);
     const li = document.createElement('li');
     li.className = 'tech-item';
-    li.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #e2e8f0;';
+    li.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border);';
     
     li.innerHTML = `
-      <span>👤 ${t.name}</span>
+      <span>👤 ${escapeHtml(t.name)}</span>
       ${isAdmin() ? `<button class="btn btn-sm btn-danger" style="padding: 2px 8px; cursor: pointer;" onclick="deleteTech('${techId}')">❌</button>` : ''}
     `;
     list.appendChild(li);
@@ -391,10 +411,10 @@ function renderSidebar() {
   sortedInventory.forEach(item => {
     const itemId = getId(item);
     const li = document.createElement('li');
-    li.className = selectedPCId == itemId ? 'active' : '';
+    li.className = String(selectedPCId) === String(itemId) ? 'active' : '';
     li.innerHTML = `
       <span class="icon">🖥️</span>
-      <span class="label">${item.property_name}</span>
+      <span class="label">${escapeHtml(item.property_name)}</span>
     `;
     li.onclick = () => filterByPC(itemId);
     sidebar.appendChild(li);
@@ -414,7 +434,7 @@ function filterData() {
   let filtered = inventory;
 
   if (selectedPCId !== 'ALL') {
-    filtered = filtered.filter(i => getId(i) == selectedPCId);
+    filtered = filtered.filter(i => getId(i) === String(selectedPCId));
   }
 
   if (query) {
@@ -426,7 +446,6 @@ function filterData() {
     );
   }
 
-  // Sort main cards alphabetically by property_name to match sidebar order
   filtered.sort((a, b) => 
     (a.property_name || '').localeCompare(b.property_name || '', undefined, { numeric: true, sensitivity: 'base' })
   );
@@ -456,10 +475,10 @@ function render(data) {
       const partId = getId(p);
       return `
         <tr>
-          <td><strong>${p.item_type || '-'}</strong></td>
-          <td>${p.brand || ''} ${p.model || ''}</td>
-          <td>${p.specs || ''} ${p.serial_number ? '(SN: ' + p.serial_number + ')' : ''}</td>
-          <td>${p.date_purchased || '-'}</td>
+          <td><strong>${escapeHtml(p.item_type || '-')}</strong></td>
+          <td>${escapeHtml(p.brand || '')} ${escapeHtml(p.model || '')}</td>
+          <td>${escapeHtml(p.specs || '')} ${p.serial_number ? '(SN: ' + escapeHtml(p.serial_number) + ')' : ''}</td>
+          <td>${escapeHtml(p.date_purchased || '-')}</td>
           ${isAdmin() ? `
             <td style="white-space: nowrap;">
               <button class="btn btn-sm btn-warning" onclick="editPart('${itemId}', '${partId}')">✏️</button>
@@ -474,10 +493,10 @@ function render(data) {
       const repairId = getId(h);
       return `
         <tr>
-          <td>${h.log_date || '-'}</td>
-          <td><strong>${h.item || '-'}</strong></td>
-          <td>${h.description || '-'}</td>
-          <td>${h.remarks || '-'}</td>
+          <td>${escapeHtml(h.log_date || '-')}</td>
+          <td><strong>${escapeHtml(h.item || '-')}</strong></td>
+          <td>${escapeHtml(h.description || '-')}</td>
+          <td>${escapeHtml(h.remarks || '-')}</td>
           ${isAdmin() ? `
             <td style="white-space: nowrap;">
               <button class="btn btn-sm btn-warning" onclick="editRepair('${itemId}', '${repairId}')">✏️</button>
@@ -493,12 +512,12 @@ function render(data) {
     card.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: flex-start;">
         <div class="device-meta" style="flex: 1;">
-          <div class="meta-item"><label>CODE</label><span>${item.property_code || '-'}</span></div>
-          <div class="meta-item"><label>NAME</label><span>${item.property_name || '-'}</span></div>
-          <div class="meta-item"><label>LOCATION</label><span>${item.location || '-'}</span></div>
-          <div class="meta-item"><label>DEPT</label><span>${item.department || '-'}</span></div>
-          <div class="meta-item"><label>DRP 1</label><span>${item.drp1 || '-'}</span></div>
-          <div class="meta-item"><label>DRP 2</label><span>${item.drp2 || '-'}</span></div>
+          <div class="meta-item"><label>CODE</label><span>${escapeHtml(item.property_code || '-')}</span></div>
+          <div class="meta-item"><label>NAME</label><span>${escapeHtml(item.property_name || '-')}</span></div>
+          <div class="meta-item"><label>LOCATION</label><span>${escapeHtml(item.location || '-')}</span></div>
+          <div class="meta-item"><label>DEPT</label><span>${escapeHtml(item.department || '-')}</span></div>
+          <div class="meta-item"><label>DRP 1</label><span>${escapeHtml(item.drp1 || '-')}</span></div>
+          <div class="meta-item"><label>DRP 2</label><span>${escapeHtml(item.drp2 || '-')}</span></div>
         </div>
         <div class="card-actions">
           ${!isSingleSelection ? `
