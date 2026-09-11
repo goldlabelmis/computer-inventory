@@ -40,15 +40,16 @@ async function loadSpareParts() {
   }
 }
 
-// Admin Authentication UI Check
+// Admin Authentication UI Check - Auto-Admin Mode Enabled
 function checkAdminAuth() {
-  const isAdmin = localStorage.getItem(AUTH_KEY) === 'true';
-  if (isAdmin) {
-    document.body.classList.add('is-admin');
-    document.getElementById('user-info').innerHTML = '<span>Logged in as: <strong>Admin</strong></span>';
-  } else {
-    document.body.classList.remove('is-admin');
-    document.getElementById('user-info').innerHTML = '<span>View Only Mode</span>';
+  // Always grant full admin access and display admin actions
+  localStorage.setItem(AUTH_KEY, 'true');
+  document.body.classList.add('is-admin');
+
+  // Remove "View Only Mode" label from top status bar
+  const userInfo = document.getElementById('user-info');
+  if (userInfo) {
+    userInfo.innerHTML = '';
   }
 }
 
