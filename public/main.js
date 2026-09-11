@@ -363,7 +363,9 @@ function renderSidebar() {
     </li>
   `;
 
-  const sortedInventory = [...inventory].sort((a, b) => (a.property_name || '').localeCompare(b.property_name || ''));
+  const sortedInventory = [...inventory].sort((a, b) => 
+    (a.property_name || '').localeCompare(b.property_name || '', undefined, { numeric: true, sensitivity: 'base' })
+  );
 
   sortedInventory.forEach(item => {
     const itemId = getId(item);
@@ -402,6 +404,11 @@ function filterData() {
       (i.department || '').toLowerCase().includes(query)
     );
   }
+
+  // Sort main cards alphabetically by property_name to match sidebar order
+  filtered.sort((a, b) => 
+    (a.property_name || '').localeCompare(b.property_name || '', undefined, { numeric: true, sensitivity: 'base' })
+  );
 
   render(filtered);
 }
