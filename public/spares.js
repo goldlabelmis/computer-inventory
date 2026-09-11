@@ -178,6 +178,7 @@ function filterSpareCategory(category, element) {
   if (element) element.classList.add('active');
 
   renderSpareCards();
+  updateAnalytics();
 }
 
 // Subcategory Ink Color Filtering
@@ -189,19 +190,80 @@ function filterInkColor(color, element) {
   if (element) element.classList.add('active');
 
   renderSpareCards();
+  updateAnalytics();
 }
 
-// Update Analytics Summary Widgets
+// Dynamic Analytics Summary Cards: Displays Ink Color & Bottle Totals when in Ink section
 function updateAnalytics() {
-  const total = sparePartsList.length;
-  const available = sparePartsList.filter(i => i.status === 'Available').length;
-  const inUse = sparePartsList.filter(i => i.status === 'In Use').length;
-  const defective = sparePartsList.filter(i => i.status === 'Defective').length;
+  const dashboard = document.getElementById('analytics-dashboard');
+  const isInkMode = currentCategory.toUpperCase() === 'INK' || currentColorFilter !== null;
 
-  if (document.getElementById('stat-total-spares')) document.getElementById('stat-total-spares').textContent = total;
-  if (document.getElementById('stat-available-spares')) document.getElementById('stat-available-spares').textContent = available;
-  if (document.getElementById('stat-inuse-spares')) document.getElementById('stat-inuse-spares').textContent = inUse;
-  if (document.getElementById('stat-defective-spares')) document.getElementById('stat-defective-spares').textContent = defective;
+  if (isInkMode && dashboard) {
+    const inkItems = sparePartsList.filter(i => (i.type || '').toLowerCase() === 'ink');
+
+    const sumColor = (col) => inkItems
+      .filter(i => (i.color || '').toLowerCase() === col.toLowerCase())
+      .reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
+
+    const blackTotal = sumColor('Black');
+    const magentaTotal = sumColor('Magenta');
+    const cyanTotal = sumColor('Cyan');
+    const yellowTotal = sumColor('Yellow');
+
+    dashboard.innerHTML = `
+      <div class="stat-card card-blue">
+        <div class="stat-title">⚫ Black Ink</div>
+        <div class="stat-value">${blackTotal} <span style="font-size: 1rem; font-weight: normal;">Bottle(s)</span></div>
+      </div>
+      <div class="stat-card card-amber">
+        <div class="stat-title">🔴 Magenta Ink</div>
+        <div class="stat-value">${magentaTotal} <span style="font-size: 1rem; font-weight: normal;">Bottle(s)</span></div>
+      </div>
+      <div class="stat-card card-green">
+        <div class="stat-title">🔵 Cyan Ink</div>
+        <div class="stat-value">${cyanTotal} <span style="font-size: 1rem; font-weight: normal;">Bottle(s)</span></div>
+      </div>
+      <div class="stat-card card-purple">
+        <div class="stat-title">🟡 Yellow Ink</div>
+        <div class="stat-value">${yellowTotal} <span style="font-size: 1rem; font-weight: normal;">Bottle(s)</span></div>
+      </div>
+    `;
+  } else if (dashboard) {
+    const total = sparePartsList.length;
+    const available = sparePartsList.filter(i => i.status === 'Available').length;
+    const inUse = sparePartsList.filter(i => i.status === 'In Use').length;
+    const defective = sparePartsList.filter(i => i.status === 'Defective').length;
+
+    dashboard.innerHTML = `
+      <div class="stat-card card-blue">
+        <div class="stat-title">Total Spares</div>
+        <div class="stat-value" id="stat-total-spares">${total}</div>
+      </div>
+      <div class="stat-card card-green">
+        <div class="stat-title">Available</div>
+        <div class="stat-value" id="stat-available-spares">${available}</div>
+      </div>
+      <div class="stat-card card-amber">
+        <div class="stat-title">In Use</div>
+        <div class="stat-value" id="stat-inuse-spares">${inUse}</div>
+      </div>
+      <div class="stat-card card-purple">
+        <div class="stat-title">Defective</div>
+        <div class="stat-value" id="stat-defective-spares">${defective}</div>
+      </div>
+    `;
+  } else {
+    // Fallback if individual elements exist without a parent container element
+    const total = sparePartsList.length;
+    const available = sparePartsList.filter(i => i.status === 'Available').length;
+    const inUse = sparePartsList.filter(i => i.status === 'In Use').length;
+    const defective = sparePartsList.filter(i => i.status === 'Defective').length;
+
+    if (document.getElementById('stat-total-spares')) document.getElementById('stat-total-spares').textContent = total;
+    if (document.getElementById('stat-available-spares')) document.getElementById('stat-available-spares').textContent = available;
+    if (document.getElementById('stat-inuse-spares')) document.getElementById('stat-inuse-spares').textContent = inUse;
+    if (document.getElementById('stat-defective-spares')) document.getElementById('stat-defective-spares').textContent = defective;
+  }
 }
 
 // Toggle Fields: Shows Quantity & Ink Color for Ink, Serial & Specs for Hardware
