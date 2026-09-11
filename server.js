@@ -49,7 +49,7 @@ const TechnicianSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true }
 });
 
-// Updated Spare Part Schema with Color Field & Quantity tracking
+// Updated Spare Part Schema with Color Field & Floating-Point Quantity tracking
 const SparePartSchema = new mongoose.Schema({
   item_type: { type: String, required: true },
   brand: String,
@@ -57,7 +57,7 @@ const SparePartSchema = new mongoose.Schema({
   specs: String,
   serial_number: String,
   color: { type: String, default: '' }, // For Ink colors (Black, Magenta, Cyan, Yellow)
-  quantity: { type: Number, default: 1 }, // For tracking unit/bottle counts
+  quantity: { type: Number, default: 1, min: 0 }, // Supports decimals (e.g., 0.5, 4.5) with a 0 floor guardrail
   status: { type: String, enum: ['Available', 'In Use', 'Defective'], default: 'Available' },
   date_added: { type: Date, default: Date.now }
 });

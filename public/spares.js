@@ -27,7 +27,7 @@ async function loadSpareParts() {
         specs: item.specs,
         serial: item.serial_number || item.serial,
         color: item.color || '',
-        quantity: item.quantity || 1,
+        quantity: item.quantity !== undefined ? item.quantity : 1,
         status: item.status || 'Available'
       }));
     } else {
@@ -78,9 +78,15 @@ function renderSpareCards(dataToRender = getFilteredData()) {
     const isInk = (item.type || '').toLowerCase() === 'ink';
     const colorBadge = isInk && item.color ? `<span class="badge badge-info" style="background-color: #6c757d; margin-left: 5px;">${escapeHTML(item.color)}</span>` : '';
 
-    // Dynamic Columns: Bottles for Ink vs Specs/Serial for Hardware
+    // Dynamic Columns: Bottle Quantity with - 0.5 Button vs Specs/Serial for Hardware
     const detailColumns = isInk ? `
-      <div class="meta-item"><label>BOTTLE QUANTITY</label><span>${item.quantity || 1} Bottle(s)</span></div>
+      <div class="meta-item">
+        <label>BOTTLE QUANTITY</label>
+        <div class="quantity-control" style="display: flex; align-items: center; gap: 8px;">
+          <span>${item.quantity} Bottle(s)</span>
+          <button class="btn btn-sm btn-danger admin-only" style="padding: 2px 8px; font-size: 0.75rem; font-weight: bold;" onclick="consumeInk('${item.id}', ${item.quantity})" title="Deduct 0.5 bottle">- 0.5</button>
+        </div>
+      </div>
       <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
     ` : `
       <div class="meta-item"><label>SPECIFICATIONS</label><span>${escapeHTML(item.specs || 'N/A')}</span></div>
@@ -102,6 +108,43 @@ function renderSpareCards(dataToRender = getFilteredData()) {
 
     container.appendChild(card);
   });
+}
+
+// Deduct 0.5 bottle of ink quick action (Includes float precision rounding)
+async function consumeInk(id, currentQty) {
+  const targetItem = sparePartsList.find(i => i.id === id);
+  if (!targetItem) return;
+
+  // Rounding prevents JS floating-point arithmetic errors (e.g. 1.0 - 0.5 = 0.4999999)
+  const rawQty = Math.max(0, currentQty - 0.5);
+  const newQty = parseFloat(rawQty.toFixed(2));
+
+  const payload = {
+    item_type: targetItem.type,
+    brand: targetItem.brand,
+    model: targetItem.model,
+    color: targetItem.color,
+    quantity: newQty,
+    specs: targetItem.specs || '',
+    serial_number: targetItem.serial || '',
+    status: newQty === 0 ? 'Defective' : targetItem.status
+  };
+
+  try {
+    const res = await fetch(`${SPARES_API_URL}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      await loadSpareParts();
+    } else {
+      alert('Failed to update ink level.');
+    }
+  } catch (err) {
+    console.error('Consume Ink Error:', err);
+  }
 }
 
 // Get Filtered Data
@@ -220,7 +263,7 @@ function editSparePart(id) {
 
   if (item.type.toLowerCase() === 'ink') {
     if (document.getElementById('spare-color')) document.getElementById('spare-color').value = item.color || '';
-    if (document.getElementById('spare-quantity')) document.getElementById('spare-quantity').value = item.quantity || 1;
+    if (document.getElementById('spare-quantity')) document.getElementById('spare-quantity').value = item.quantity !== undefined ? item.quantity : 1;
   } else {
     if (document.getElementById('spare-specs')) document.getElementById('spare-specs').value = item.specs || '';
     if (document.getElementById('spare-serial')) document.getElementById('spare-serial').value = item.serial || '';
@@ -242,7 +285,7 @@ async function handleSaveSpare(e) {
     model: document.getElementById('spare-model').value,
     status: document.getElementById('spare-status').value,
     color: isInk ? document.getElementById('spare-color').value : '',
-    quantity: isInk ? parseInt(document.getElementById('spare-quantity').value, 10) || 1 : 1,
+    quantity: isInk ? parseFloat(document.getElementById('spare-quantity').value) || 1 : 1,
     specs: isInk ? '' : document.getElementById('spare-specs').value,
     serial_number: isInk ? '' : document.getElementById('spare-serial').value
   };
