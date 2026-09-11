@@ -7,6 +7,9 @@ const ExcelJS = require('exceljs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust first proxy (Required for secure cookies on Render/Heroku/Vercel)
+app.set('trust proxy', 1);
+
 // 1. Connect to MongoDB Atlas
 const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://<username>:<password>@cluster.mongodb.net/computer_inventory?retryWrites=true&w=majority';
 
@@ -60,7 +63,11 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'super-secret-inventory-key',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000 }
+  cookie: {
+    maxAge: 24 * 60 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax'
+  }
 }));
 
 // Admin-Only Authorization Middleware
