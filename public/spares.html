@@ -83,7 +83,7 @@
     <main class="main-content">
       
       <div class="status-bar">
-        <div id="user-info"><span>View Only Mode</span></div>
+        <div id="user-info"></div>
         <button class="btn btn-primary btn-sm admin-only" onclick="openAddSpareModal()">+ Add Spare Part</button>
       </div>
 
@@ -122,7 +122,7 @@
         <div class="form-row">
           <div class="form-group">
             <label>Category / Type</label>
-            <select id="spare-type" class="form-select" onchange="toggleInkColorField()" required>
+            <select id="spare-type" class="form-select" onchange="toggleFormFieldsForType()" required>
               <option value="RAM">RAM</option>
               <option value="Storage">Storage</option>
               <option value="GPU">GPU</option>
@@ -139,7 +139,7 @@
         <div class="form-row">
           <div class="form-group">
             <label>Model</label>
-            <input type="text" id="spare-model" placeholder="Fury Beast / L3210..." required>
+            <input type="text" id="spare-model" placeholder="Fury Beast / 664..." required>
           </div>
           <div class="form-group">
             <label>Status</label>
@@ -163,14 +163,23 @@
           </select>
         </div>
 
-        <div class="form-group">
-          <label>Serial Number</label>
-          <input type="text" id="spare-serial" placeholder="SN-123456...">
+        <!-- CONDITIONAL INK BOTTLE QUANTITY FIELD -->
+        <div class="form-group" id="ink-quantity-group" style="display: none;">
+          <label>Number of Bottles</label>
+          <input type="number" id="spare-quantity" min="1" value="1" placeholder="e.g. 5">
         </div>
 
-        <div class="form-group">
-          <label>Specifications</label>
-          <input type="text" id="spare-specs" placeholder="DDR4 3200MHz / 70ml Bottle...">
+        <!-- STANDARD HARDWARE FIELDS (HIDDEN WHEN INK IS SELECTED) -->
+        <div id="standard-fields-group">
+          <div class="form-group">
+            <label>Serial Number</label>
+            <input type="text" id="spare-serial" placeholder="SN-123456...">
+          </div>
+
+          <div class="form-group">
+            <label>Specifications</label>
+            <input type="text" id="spare-specs" placeholder="DDR4 3200MHz...">
+          </div>
         </div>
 
         <div class="modal-actions">

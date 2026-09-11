@@ -27,6 +27,7 @@ async function loadSpareParts() {
         specs: item.specs,
         serial: item.serial_number || item.serial,
         color: item.color || '',
+        quantity: item.quantity || 1,
         status: item.status || 'Available'
       }));
     } else {
@@ -42,11 +43,9 @@ async function loadSpareParts() {
 
 // Admin Authentication UI Check - Auto-Admin Mode Enabled
 function checkAdminAuth() {
-  // Always grant full admin access and display admin actions
   localStorage.setItem(AUTH_KEY, 'true');
   document.body.classList.add('is-admin');
 
-  // Remove "View Only Mode" label from top status bar
   const userInfo = document.getElementById('user-info');
   if (userInfo) {
     userInfo.innerHTML = '';
@@ -76,17 +75,24 @@ function renderSpareCards(dataToRender = getFilteredData()) {
     if (item.status === 'In Use') badgeClass = 'badge-inuse';
     if (item.status === 'Defective') badgeClass = 'badge-defective';
 
-    // Display ink color if item type is Ink
     const isInk = (item.type || '').toLowerCase() === 'ink';
     const colorBadge = isInk && item.color ? `<span class="badge badge-info" style="background-color: #6c757d; margin-left: 5px;">${escapeHTML(item.color)}</span>` : '';
+
+    // Dynamic Columns: Bottles for Ink vs Specs/Serial for Hardware
+    const detailColumns = isInk ? `
+      <div class="meta-item"><label>BOTTLE QUANTITY</label><span>${item.quantity || 1} Bottle(s)</span></div>
+      <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
+    ` : `
+      <div class="meta-item"><label>SPECIFICATIONS</label><span>${escapeHTML(item.specs || 'N/A')}</span></div>
+      <div class="meta-item"><label>SERIAL NUMBER</label><span>${escapeHTML(item.serial || 'N/A')}</span></div>
+      <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
+    `;
 
     card.innerHTML = `
       <div class="device-meta" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
         <div class="meta-item"><label>TYPE</label><span>${escapeHTML(item.type)} ${colorBadge}</span></div>
         <div class="meta-item"><label>BRAND & MODEL</label><span>${escapeHTML(item.brand)} ${escapeHTML(item.model)}</span></div>
-        <div class="meta-item"><label>SPECIFICATIONS</label><span>${escapeHTML(item.specs || 'N/A')}</span></div>
-        <div class="meta-item"><label>SERIAL NUMBER</label><span>${escapeHTML(item.serial || 'N/A')}</span></div>
-        <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
+        ${detailColumns}
         <div class="card-actions admin-only" style="display: flex; gap: 8px;">
           <button class="btn btn-warning btn-sm" style="background-color: #fca311; border: none; color: white;" onclick="editSparePart('${item.id}')">✏️ Edit</button>
           <button class="btn btn-danger btn-sm" style="background-color: #ef476f; border: none; color: white;" onclick="deleteSparePart('${item.id}')">Delete Unit</button>
@@ -98,7 +104,7 @@ function renderSpareCards(dataToRender = getFilteredData()) {
   });
 }
 
-// Get Filtered Data by Category, Ink Color, & Search Input
+// Get Filtered Data
 function getFilteredData() {
   const searchTerm = document.getElementById('search-spare-input')?.value.toLowerCase() || '';
 
@@ -120,9 +126,8 @@ function getFilteredData() {
 // Main Category Filtering
 function filterSpareCategory(category, element) {
   currentCategory = category;
-  currentColorFilter = null; // Reset ink color filter when changing category
+  currentColorFilter = null;
   
-  // Highlight sidebar element
   document.querySelectorAll('#spare-category-sidebar li').forEach(li => li.classList.remove('active'));
   if (element) element.classList.add('active');
 
@@ -134,7 +139,6 @@ function filterInkColor(color, element) {
   currentCategory = 'Ink';
   currentColorFilter = color;
 
-  // Highlight active sub-item
   document.querySelectorAll('#spare-category-sidebar li').forEach(li => li.classList.remove('active'));
   if (element) element.classList.add('active');
 
@@ -154,21 +158,31 @@ function updateAnalytics() {
   if (document.getElementById('stat-defective-spares')) document.getElementById('stat-defective-spares').textContent = defective;
 }
 
-// Toggle Ink Color Input in Modal
-function toggleInkColorField() {
+// Toggle Fields: Shows Quantity & Ink Color for Ink, Serial & Specs for Hardware
+function toggleFormFieldsForType() {
   const typeSelect = document.getElementById('spare-type');
   const colorGroup = document.getElementById('ink-color-group');
-  if (typeSelect && colorGroup) {
-    if (typeSelect.value.toLowerCase() === 'ink') {
-      colorGroup.style.display = 'block';
-    } else {
+  const quantityGroup = document.getElementById('ink-quantity-group');
+  const standardFields = document.getElementById('standard-fields-group');
+
+  if (typeSelect && typeSelect.value.toLowerCase() === 'ink') {
+    if (colorGroup) colorGroup.style.display = 'block';
+    if (quantityGroup) quantityGroup.style.display = 'block';
+    if (standardFields) standardFields.style.display = 'none';
+  } else {
+    if (colorGroup) {
       colorGroup.style.display = 'none';
       document.getElementById('spare-color').value = '';
     }
+    if (quantityGroup) {
+      quantityGroup.style.display = 'none';
+      document.getElementById('spare-quantity').value = '1';
+    }
+    if (standardFields) standardFields.style.display = 'block';
   }
 }
 
-// Event Listeners Setup
+// Setup Event Listeners
 function setupEventListeners() {
   const searchInput = document.getElementById('search-spare-input');
   if (searchInput) {
@@ -181,15 +195,16 @@ function setupEventListeners() {
   }
 }
 
-// Add / Edit Modal Controls
+// Open Add Modal
 function openAddSpareModal() {
   document.getElementById('spare-modal-title').textContent = 'Add Spare Part';
   document.getElementById('spare-id').value = '';
   document.getElementById('add-spare-form').reset();
-  toggleInkColorField();
+  toggleFormFieldsForType();
   openModal('spare-modal');
 }
 
+// Open Edit Modal
 function editSparePart(id) {
   const item = sparePartsList.find(i => i.id === id);
   if (!item) return;
@@ -199,31 +214,37 @@ function editSparePart(id) {
   document.getElementById('spare-type').value = item.type;
   document.getElementById('spare-brand').value = item.brand || '';
   document.getElementById('spare-model').value = item.model || '';
-  document.getElementById('spare-specs').value = item.specs || '';
-  document.getElementById('spare-serial').value = item.serial || '';
   document.getElementById('spare-status').value = item.status;
   
-  toggleInkColorField();
-  if (document.getElementById('spare-color')) {
-    document.getElementById('spare-color').value = item.color || '';
+  toggleFormFieldsForType();
+
+  if (item.type.toLowerCase() === 'ink') {
+    if (document.getElementById('spare-color')) document.getElementById('spare-color').value = item.color || '';
+    if (document.getElementById('spare-quantity')) document.getElementById('spare-quantity').value = item.quantity || 1;
+  } else {
+    if (document.getElementById('spare-specs')) document.getElementById('spare-specs').value = item.specs || '';
+    if (document.getElementById('spare-serial')) document.getElementById('spare-serial').value = item.serial || '';
   }
 
   openModal('spare-modal');
 }
 
-// Handle Add / Edit Submission to Database
+// Save Item API Request
 async function handleSaveSpare(e) {
   e.preventDefault();
 
   const id = document.getElementById('spare-id').value;
+  const isInk = document.getElementById('spare-type').value.toLowerCase() === 'ink';
+
   const payload = {
     item_type: document.getElementById('spare-type').value,
     brand: document.getElementById('spare-brand').value,
     model: document.getElementById('spare-model').value,
-    specs: document.getElementById('spare-specs').value,
-    serial_number: document.getElementById('spare-serial').value,
     status: document.getElementById('spare-status').value,
-    color: document.getElementById('spare-type').value.toLowerCase() === 'ink' ? document.getElementById('spare-color').value : ''
+    color: isInk ? document.getElementById('spare-color').value : '',
+    quantity: isInk ? parseInt(document.getElementById('spare-quantity').value, 10) || 1 : 1,
+    specs: isInk ? '' : document.getElementById('spare-specs').value,
+    serial_number: isInk ? '' : document.getElementById('spare-serial').value
   };
 
   try {
@@ -241,15 +262,15 @@ async function handleSaveSpare(e) {
       closeModal('spare-modal');
     } else {
       const err = await res.json();
-      alert(`Error saving spare part: ${err.error || 'Server error'}`);
+      alert(`Error saving item: ${err.error || 'Server error'}`);
     }
   } catch (err) {
     console.error('Save Spare Error:', err);
-    alert('Failed to save spare item. Check server logs.');
+    alert('Failed to save spare item.');
   }
 }
 
-// Delete Unit Function
+// Delete Item
 async function deleteSparePart(id) {
   if (confirm('Are you sure you want to delete this spare part unit?')) {
     try {
