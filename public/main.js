@@ -1,610 +1,368 @@
-let inventory = [];
-let technicians = [];
-let selectedPCId = 'ALL';
-let expandedCards = {};
+// Global Application State
+let inventoryData = [];
+let sparePartsData = [];
+let techniciansData = [];
 let currentUser = null;
+let currentFilterPC = 'ALL';
 
-// HELPER: HTML Sanitization
-function escapeHtml(str) {
-  if (typeof str !== 'string') return str || '';
-  return str.replace(/[&<>"']/g, (m) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;'
-  }[m]));
-}
-
-// GLOBAL MODAL CONTROLS
-window.openModal = function(id) { 
-  const modal = document.getElementById(id);
-  if (modal) modal.classList.add('active'); 
-};
-
-window.closeModal = function(id) { 
-  const modal = document.getElementById(id);
-  if (modal) {
-    modal.classList.remove('active');
-
-    if (id === 'workstation-modal') {
-      document.getElementById('edit-comp-id').value = '';
-      document.getElementById('workstation-modal-title').innerText = 'Add Workstation';
-      document.getElementById('add-workstation-form').reset();
-    }
-    if (id === 'part-modal') {
-      document.getElementById('part-id').value = '';
-      document.getElementById('part-modal-title').innerText = 'Add Part';
-      document.getElementById('add-part-form').reset();
-    }
-    if (id === 'repair-modal') {
-      document.getElementById('repair-id').value = '';
-      document.getElementById('repair-modal-title').innerText = 'Log Repair';
-      document.getElementById('add-repair-form').reset();
-    }
-  }
-};
-
-window.onclick = function(event) {
-  if (event.target.classList.contains('modal')) {
-    event.target.classList.remove('active');
-  }
-};
-
-function getId(obj) {
-  return obj ? String(obj.id || obj._id || '') : '';
-}
-
-function isAdmin() {
-  return currentUser && currentUser.role === 'administrator';
-}
-
+// DOM Elements Initialization
 document.addEventListener('DOMContentLoaded', () => {
-  // DISABLE AUTOCOMPLETE & PREVENT PASSWORD AUTOFILL SITE-WIDE
-  const applyAutofillProtections = () => {
-    document.querySelectorAll('input').forEach(input => {
-      input.setAttribute('autocomplete', 'off');
-      if (input.type === 'password') {
-        input.setAttribute('autocomplete', 'new-password');
-      }
-    });
-  };
-
-  applyAutofillProtections();
-
-  // Watch for dynamically rendered inputs (modals, forms)
-  const observer = new MutationObserver(() => {
-    applyAutofillProtections();
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  checkAuth();
-  loadInventory();
-  loadTechnicians();
-
-  // SIDEBAR TOGGLE HANDLER
-  const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
-  const appSidebar = document.getElementById('app-sidebar') || document.querySelector('.sidebar');
-  if (sidebarToggleBtn && appSidebar) {
-    sidebarToggleBtn.addEventListener('click', () => {
-      appSidebar.classList.toggle('collapsed');
-    });
-  }
-
-  document.getElementById('search-input')?.addEventListener('input', () => filterData());
-
-  // LOGIN FORM
-  const loginForm = document.getElementById('login-form');
-  if (loginForm) {
-    loginForm.onsubmit = async (e) => {
-      e.preventDefault();
-      const username = document.getElementById('login-username').value;
-      const password = document.getElementById('login-password').value;
-
-      try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
-        });
-
-        if (res.ok) {
-          closeModal('login-modal');
-          await checkAuth();
-          loadInventory();
-        } else {
-          alert('Invalid credentials!');
-        }
-      } catch (err) {
-        alert('Login failed: ' + err.message);
-      }
-    };
-  }
-
-  // WORKSTATION FORM
-  const workstationForm = document.getElementById('add-workstation-form');
-  if (workstationForm) {
-    workstationForm.onsubmit = async (e) => {
-      e.preventDefault();
-      const editId = document.getElementById('edit-comp-id').value;
-      const payload = {
-        property_name: document.getElementById('prop-name').value,
-        property_code: document.getElementById('prop-code').value,
-        location: document.getElementById('prop-loc').value,
-        department: document.getElementById('prop-dept').value,
-        drp1: document.getElementById('prop-drp1').value,
-        drp2: document.getElementById('prop-drp2').value
-      };
-
-      const url = editId ? `/api/computers/${editId}` : '/api/computers';
-      const method = editId ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.status === 401 || res.status === 403) return alert('Admin access required.');
-
-      closeModal('workstation-modal');
-      loadInventory();
-    };
-  }
-
-  // PART FORM
-  const partForm = document.getElementById('add-part-form');
-  if (partForm) {
-    partForm.onsubmit = async (e) => {
-      e.preventDefault();
-      const partId = document.getElementById('part-id').value;
-      const payload = {
-        computer_id: document.getElementById('part-comp-id').value,
-        item_type: document.getElementById('part-type').value,
-        brand: document.getElementById('part-brand').value,
-        model: document.getElementById('part-model').value,
-        specs: document.getElementById('part-specs').value,
-        serial_number: document.getElementById('part-sn').value,
-        date_purchased: document.getElementById('part-date').value
-      };
-
-      const url = partId ? `/api/components/${partId}` : '/api/components';
-      const method = partId ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.status === 401 || res.status === 403) return alert('Admin access required.');
-
-      closeModal('part-modal');
-      loadInventory();
-    };
-  }
-
-  // REPAIR FORM
-  const repairForm = document.getElementById('add-repair-form');
-  if (repairForm) {
-    repairForm.onsubmit = async (e) => {
-      e.preventDefault();
-      const repairId = document.getElementById('repair-id').value;
-      const payload = {
-        computer_id: document.getElementById('repair-comp-id').value,
-        log_date: document.getElementById('repair-date').value,
-        item: document.getElementById('repair-item').value,
-        description: document.getElementById('repair-desc').value,
-        remarks: document.getElementById('repair-remarks').value
-      };
-
-      const url = repairId ? `/api/repair-logs/${repairId}` : '/api/repair-logs';
-      const method = repairId ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.status === 401 || res.status === 403) return alert('Admin access required.');
-
-      closeModal('repair-modal');
-      loadInventory();
-    };
-  }
-
-  // TECHNICIAN FORM
-  const techForm = document.getElementById('add-tech-form');
-  if (techForm) {
-    techForm.onsubmit = async (e) => {
-      e.preventDefault();
-      const input = document.getElementById('new-tech-name');
-      const name = input.value.trim();
-      if (!name) return;
-
-      const res = await fetch('/api/technicians', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-      });
-
-      if (res.status === 401 || res.status === 403) return alert('Admin access required.');
-
-      if (res.ok) {
-        input.value = '';
-        loadTechnicians();
-      } else {
-        alert('Technician already exists or failed to add.');
-      }
-    };
-  }
+  initApp();
+  setupEventListeners();
 });
 
-/* AUTH & DASHBOARD FUNCTIONS */
-async function checkAuth() {
+// Initialize Application Data & State
+async function initApp() {
+  await checkAuthStatus();
+  await refreshDashboardStats();
+  await loadTechnicians();
+  await loadInventory();
+}
+
+// Setup Event Listeners for Forms and Inputs
+function setupEventListeners() {
+  // Sidebar Toggle
+  const sidebarToggle = document.getElementById('sidebar-toggle-btn');
+  if (sidebarToggle) {
+    sidebarToggle.addEventListener('click', () => {
+      document.getElementById('app-sidebar').classList.toggle('collapsed');
+    });
+  }
+
+  // Live Search
+  const searchInput = document.getElementById('search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => handleSearch(e.target.value));
+  }
+
+  // Form Submissions
+  document.getElementById('login-form').addEventListener('submit', handleLogin);
+  document.getElementById('add-workstation-form').addEventListener('submit', handleSaveWorkstation);
+  document.getElementById('add-part-form').addEventListener('submit', handleSavePart);
+  document.getElementById('add-repair-form').addEventListener('submit', handleSaveRepair);
+  document.getElementById('add-tech-form').addEventListener('submit', handleAddTechnician);
+  document.getElementById('add-spare-form').addEventListener('submit', handleSaveSparePart);
+}
+
+/* --- AUTHENTICATION HANDLERS --- */
+async function checkAuthStatus() {
   try {
     const res = await fetch('/api/auth/me');
     const data = await res.json();
     currentUser = data.user;
-
-    const userInfoEl = document.getElementById('user-info');
-    const authBtn = document.getElementById('auth-btn');
-
-    if (currentUser) {
-      if (userInfoEl) userInfoEl.innerHTML = `<span>Logged in as: <b>${escapeHtml(currentUser.username)}</b> (${escapeHtml(currentUser.role)})</span>`;
-      if (authBtn) {
-        authBtn.innerText = '🔓 Logout';
-        authBtn.className = 'btn btn-danger';
-        authBtn.onclick = logout;
-      }
-      loadDashboardStats();
-    } else {
-      if (userInfoEl) userInfoEl.innerHTML = `<span>View Only Mode</span>`;
-      if (authBtn) {
-        authBtn.innerText = '🔒 Login';
-        authBtn.className = 'btn btn-secondary';
-        authBtn.onclick = () => openModal('login-modal');
-      }
-      updateDashboardUI(inventory.length, 0, 0, technicians.length);
-    }
-
-    toggleAdminControls();
-    renderTechManageList();
-    filterData();
+    updateUIState();
   } catch (err) {
-    console.error('Auth check error:', err);
+    console.error('Error checking auth state:', err);
   }
 }
 
-function toggleAdminControls() {
-  document.body.classList.toggle('is-admin', isAdmin());
+async function handleLogin(e) {
+  e.preventDefault();
+  const username = document.getElementById('login-username').value;
+  const password = document.getElementById('login-password').value;
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      currentUser = data.user;
+      closeModal('login-modal');
+      document.getElementById('login-form').reset();
+      updateUIState();
+      await initApp();
+    } else {
+      alert(data.error || 'Login failed');
+    }
+  } catch (err) {
+    console.error('Login Error:', err);
+  }
 }
 
-async function logout() {
-  await fetch('/api/auth/logout', { method: 'POST' });
-  currentUser = null;
-  checkAuth();
-  loadInventory();
+async function handleLogout() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    currentUser = null;
+    updateUIState();
+    await initApp();
+  } catch (err) {
+    console.error('Logout Error:', err);
+  }
 }
 
-async function loadDashboardStats() {
+function updateUIState() {
+  const body = document.body;
+  const authBtn = document.getElementById('auth-btn');
+  const userInfo = document.getElementById('user-info');
+
+  if (currentUser && currentUser.role === 'administrator') {
+    body.classList.add('is-admin');
+    authBtn.innerHTML = '🔓 Logout';
+    authBtn.onclick = handleLogout;
+    userInfo.innerHTML = `<span>Administrator Mode (${currentUser.username})</span>`;
+  } else {
+    body.classList.remove('is-admin');
+    authBtn.innerHTML = '🔒 Login';
+    authBtn.onclick = () => openModal('login-modal');
+    userInfo.innerHTML = '<span>View Only Mode</span>';
+  }
+}
+
+/* --- DASHBOARD & ANALYTICS --- */
+async function refreshDashboardStats() {
   try {
     const res = await fetch('/api/dashboard/stats');
-    if (!res.ok) return calculateLocalStats();
-    const stats = await res.json();
-    updateDashboardUI(stats.totalComputers, stats.totalParts, stats.totalRepairs, stats.totalTechs);
+    const data = await res.json();
+
+    document.getElementById('stat-pcs').textContent = data.totalComputers || 0;
+    document.getElementById('stat-parts').textContent = data.totalParts || 0;
+    document.getElementById('stat-repairs').textContent = data.totalRepairs || 0;
+    document.getElementById('stat-spares').textContent = data.totalSpares || 0;
+    document.getElementById('stat-techs').textContent = data.totalTechs || 0;
   } catch (err) {
-    calculateLocalStats();
+    console.error('Error fetching dashboard stats:', err);
   }
 }
 
-function calculateLocalStats() {
-  let totalParts = 0;
-  let totalRepairs = 0;
-  inventory.forEach(item => {
-    totalParts += (item.parts || []).length;
-    totalRepairs += (item.history || []).length;
-  });
-  updateDashboardUI(inventory.length, totalParts, totalRepairs, technicians.length);
-}
-
-function updateDashboardUI(pcs, parts, repairs, techs) {
-  const pcEl = document.getElementById('stat-pcs');
-  const partEl = document.getElementById('stat-parts');
-  const repairEl = document.getElementById('stat-repairs');
-  const techEl = document.getElementById('stat-techs');
-
-  if (pcEl) pcEl.innerText = pcs;
-  if (partEl) partEl.innerText = parts;
-  if (repairEl) repairEl.innerText = repairs;
-  if (techEl) techEl.innerText = techs;
-}
-
-function exportToExcel() {
-  if (!isAdmin()) {
-    alert('Admin privileges required to export inventory reports.');
-    return openModal('login-modal');
-  }
-  window.location.href = `/api/export/excel?computerId=${encodeURIComponent(selectedPCId)}`;
-}
-
-/* DATA LOADERS & RENDERERS */
+/* --- INVENTORY & SIDEBAR RENDERING --- */
 async function loadInventory() {
   try {
     const res = await fetch('/api/inventory');
-    inventory = await res.json();
+    inventoryData = await res.json();
     renderSidebar();
-    filterData();
-    calculateLocalStats();
+    renderInventory();
   } catch (err) {
     console.error('Failed to load inventory:', err);
   }
 }
 
-async function loadTechnicians() {
-  try {
-    const res = await fetch('/api/technicians');
-    technicians = await res.json();
-    populateTechDropdown();
-    renderTechManageList();
-    calculateLocalStats();
-  } catch (err) {
-    console.error('Failed to load technicians:', err);
-  }
-}
-
-function populateTechDropdown() {
-  const select = document.getElementById('repair-remarks');
-  if (!select) return;
-  select.innerHTML = '<option value="" disabled selected>-- Select Technician --</option>';
-  technicians.forEach(t => {
-    const opt = document.createElement('option');
-    opt.value = t.name;
-    opt.textContent = t.name;
-    select.appendChild(opt);
-  });
-}
-
-function renderTechManageList() {
-  const list = document.getElementById('tech-manage-list');
-  if (!list) return;
-  list.innerHTML = technicians.length ? '' : '<li style="text-align:center; padding:0.5rem; color:#94a3b8;">No technicians found.</li>';
-  
-  technicians.forEach(t => {
-    const techId = getId(t);
-    const li = document.createElement('li');
-    li.className = 'tech-item';
-    li.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border);';
-    
-    li.innerHTML = `
-      <span>👤 ${escapeHtml(t.name)}</span>
-      ${isAdmin() ? `<button class="btn btn-sm btn-danger" style="padding: 2px 8px; cursor: pointer;" onclick="deleteTech('${techId}')">❌</button>` : ''}
-    `;
-    list.appendChild(li);
-  });
-}
-
-async function deleteTech(id) {
-  if (!isAdmin()) return alert('Admin access required.');
-  if (confirm('Remove this technician?')) {
-    const res = await fetch(`/api/technicians/${id}`, { method: 'DELETE' });
-    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
-    loadTechnicians();
-  }
-}
-
 function renderSidebar() {
-  const sidebar = document.getElementById('pc-list-sidebar');
-  if (!sidebar) return;
-  sidebar.innerHTML = `
-    <li class="${selectedPCId === 'ALL' ? 'active' : ''}" onclick="filterByPC('ALL')">
+  const sidebarList = document.getElementById('pc-list-sidebar');
+  sidebarList.innerHTML = `
+    <li class="${currentFilterPC === 'ALL' ? 'active' : ''}" onclick="filterByPC('ALL')">
       <span class="icon">💻</span>
       <span class="label">All PCs</span>
     </li>
   `;
 
-  const sortedInventory = [...inventory].sort((a, b) => 
-    (a.property_name || '').localeCompare(b.property_name || '', undefined, { numeric: true, sensitivity: 'base' })
-  );
-
-  sortedInventory.forEach(item => {
-    const itemId = getId(item);
+  inventoryData.forEach(comp => {
     const li = document.createElement('li');
-    li.className = String(selectedPCId) === String(itemId) ? 'active' : '';
+    if (currentFilterPC === comp._id) li.classList.add('active');
+    li.onclick = () => filterByPC(comp._id);
     li.innerHTML = `
       <span class="icon">🖥️</span>
-      <span class="label">${escapeHtml(item.property_name)}</span>
+      <span class="label">${escapeHTML(comp.property_name)}</span>
     `;
-    li.onclick = () => filterByPC(itemId);
-    sidebar.appendChild(li);
+    sidebarList.appendChild(li);
   });
 }
 
-function filterByPC(id) {
-  selectedPCId = id;
-  expandedCards = {};
+function filterByPC(pcId) {
+  currentFilterPC = pcId;
   renderSidebar();
-  filterData();
+  renderInventory();
 }
 
-function filterData() {
-  const queryInput = document.getElementById('search-input');
-  const query = queryInput ? queryInput.value.toLowerCase() : '';
-  let filtered = inventory;
-
-  if (selectedPCId !== 'ALL') {
-    filtered = filtered.filter(i => getId(i) === String(selectedPCId));
-  }
-
-  if (query) {
-    filtered = filtered.filter(i => 
-      (i.property_code || '').toLowerCase().includes(query) || 
-      (i.property_name || '').toLowerCase().includes(query) || 
-      (i.location || '').toLowerCase().includes(query) ||
-      (i.department || '').toLowerCase().includes(query)
-    );
-  }
-
-  filtered.sort((a, b) => 
-    (a.property_name || '').localeCompare(b.property_name || '', undefined, { numeric: true, sensitivity: 'base' })
-  );
-
-  render(filtered);
-}
-
-function toggleDetails(id) {
-  expandedCards[id] = !expandedCards[id];
-  filterData();
-}
-
-function render(data) {
+function renderInventory(dataToRender = null) {
   const container = document.getElementById('inventory-list');
-  if (!container) return;
-  container.innerHTML = data.length ? '' : '<p style="text-align:center; padding: 2rem;">No records found.</p>';
+  container.innerHTML = '';
 
-  data.forEach(item => {
-    const itemId = getId(item);
-    const isSingleSelection = selectedPCId !== 'ALL';
-    const isExpanded = isSingleSelection ? true : !!expandedCards[itemId];
+  const list = dataToRender || (currentFilterPC === 'ALL' 
+    ? inventoryData 
+    : inventoryData.filter(c => c._id === currentFilterPC));
 
-    const actionHeader = isAdmin() ? '<th>Action</th>' : '';
-    const tableColspan = isAdmin() ? 5 : 4;
+  if (list.length === 0) {
+    container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 2rem;">No workstations found.</p>';
+    return;
+  }
 
-    const partsRows = (item.parts || []).map(p => {
-      const partId = getId(p);
-      return `
-        <tr>
-          <td><strong>${escapeHtml(p.item_type || '-')}</strong></td>
-          <td>${escapeHtml(p.brand || '')} ${escapeHtml(p.model || '')}</td>
-          <td>${escapeHtml(p.specs || '')} ${p.serial_number ? '(SN: ' + escapeHtml(p.serial_number) + ')' : ''}</td>
-          <td>${escapeHtml(p.date_purchased || '-')}</td>
-          ${isAdmin() ? `
-            <td style="white-space: nowrap;">
-              <button class="btn btn-sm btn-warning" onclick="editPart('${itemId}', '${partId}')">✏️</button>
-              <button class="btn btn-sm btn-danger" onclick="deletePart('${partId}')">❌</button>
-            </td>
-          ` : ''}
-        </tr>
-      `;
-    }).join('');
-
-    const repairRows = (item.history || []).map(h => {
-      const repairId = getId(h);
-      return `
-        <tr>
-          <td>${escapeHtml(h.log_date || '-')}</td>
-          <td><strong>${escapeHtml(h.item || '-')}</strong></td>
-          <td>${escapeHtml(h.description || '-')}</td>
-          <td>${escapeHtml(h.remarks || '-')}</td>
-          ${isAdmin() ? `
-            <td style="white-space: nowrap;">
-              <button class="btn btn-sm btn-warning" onclick="editRepair('${itemId}', '${repairId}')">✏️</button>
-              <button class="btn btn-sm btn-danger" onclick="deleteRepair('${repairId}')">❌</button>
-            </td>
-          ` : ''}
-        </tr>
-      `;
-    }).join('');
-
+  list.forEach(comp => {
     const card = document.createElement('div');
     card.className = 'device-card';
+
+    // Workstation Metadata Header
     card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-        <div class="device-meta" style="flex: 1;">
-          <div class="meta-item"><label>CODE</label><span>${escapeHtml(item.property_code || '-')}</span></div>
-          <div class="meta-item"><label>NAME</label><span>${escapeHtml(item.property_name || '-')}</span></div>
-          <div class="meta-item"><label>LOCATION</label><span>${escapeHtml(item.location || '-')}</span></div>
-          <div class="meta-item"><label>DEPT</label><span>${escapeHtml(item.department || '-')}</span></div>
-          <div class="meta-item"><label>DRP 1</label><span>${escapeHtml(item.drp1 || '-')}</span></div>
-          <div class="meta-item"><label>DRP 2</label><span>${escapeHtml(item.drp2 || '-')}</span></div>
-        </div>
-        <div class="card-actions">
-          ${!isSingleSelection ? `
-            <button class="btn btn-sm btn-outline" onclick="toggleDetails('${itemId}')">
-              ${isExpanded ? 'Hide Details' : 'Show Details'}
-            </button>
-          ` : ''}
-          ${isAdmin() ? `
-            <button class="btn btn-sm btn-warning" onclick="editWorkstation('${itemId}')">✏️ Edit</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteComp('${itemId}')">Delete Unit</button>
-          ` : ''}
-        </div>
+      <div class="device-meta">
+        <div class="meta-item"><label>Property Name</label><span>${escapeHTML(comp.property_name)}</span></div>
+        <div class="meta-item"><label>Property Code</label><span>${escapeHTML(comp.property_code)}</span></div>
+        <div class="meta-item"><label>Location</label><span>${escapeHTML(comp.location || 'N/A')}</span></div>
+        <div class="meta-item"><label>Department</label><span>${escapeHTML(comp.department || 'N/A')}</span></div>
+        <div class="meta-item"><label>DRP 1</label><span>${escapeHTML(comp.drp1 || 'N/A')}</span></div>
+        <div class="meta-item"><label>DRP 2</label><span>${escapeHTML(comp.drp2 || 'N/A')}</span></div>
+      </div>
+      
+      <div class="card-actions admin-only" style="margin-bottom: 1rem;">
+        <button class="btn btn-secondary btn-sm" onclick="editWorkstation('${comp._id}')">✏️ Edit Workstation</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteWorkstation('${comp._id}')">🗑️ Delete</button>
       </div>
 
-      ${isExpanded ? `
-      <div class="details-section" style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-        <div class="sub-header">
-          <h4>Parts & Peripherals</h4>
-          ${isAdmin() ? `<button class="btn btn-sm btn-outline" onclick="openPartModal('${itemId}')">+ Add Part</button>` : ''}
-        </div>
-        <table>
-          <thead><tr><th>Type</th><th>Brand/Model</th><th>Specs / SN</th><th>Date</th>${actionHeader}</tr></thead>
-          <tbody>${partsRows || `<tr><td colspan="${tableColspan}">No parts recorded.</td></tr>`}</tbody>
-        </table>
-
-        <div class="sub-header">
-          <h4>🛠️ Maintenance & Repair History</h4>
-          ${isAdmin() ? `<button class="btn btn-sm btn-outline" onclick="openRepairModal('${itemId}')">+ Log Repair</button>` : ''}
-        </div>
-        <table>
-          <thead><tr><th>Date</th><th>Item</th><th>Description</th><th>Tech</th>${actionHeader}</tr></thead>
-          <tbody>${repairRows || `<tr><td colspan="${tableColspan}">No repair logs recorded.</td></tr>`}</tbody>
-        </table>
+      <!-- Installed Parts Section -->
+      <div class="sub-header">
+        <h4>Installed Components / Peripherals</h4>
+        <button class="btn btn-primary btn-sm admin-only" onclick="openAddPartModal('${comp._id}')">+ Add Part</button>
       </div>
-      ` : ''}
+      ${renderPartsTable(comp._id, comp.parts || [])}
+
+      <!-- Repair Logs Section -->
+      <div class="sub-header" style="margin-top: 1.5rem;">
+        <h4>Repair & Maintenance History</h4>
+        <button class="btn btn-primary btn-sm admin-only" onclick="openAddRepairModal('${comp._id}')">+ Log Repair</button>
+      </div>
+      ${renderRepairTable(comp._id, comp.history || [])}
     `;
+
     container.appendChild(card);
   });
 }
 
-/* EDIT/OPEN HANDLERS */
-function openPartModal(compId) { 
-  if (!isAdmin()) return alert('Admin access required.');
-  document.getElementById('part-id').value = '';
-  document.getElementById('part-comp-id').value = compId; 
-  document.getElementById('part-modal-title').innerText = 'Add Part';
-  openModal('part-modal'); 
+function renderPartsTable(compId, parts) {
+  if (parts.length === 0) return '<p style="font-size: 0.8rem; color: var(--text-muted);">No components installed.</p>';
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Brand</th>
+          <th>Model</th>
+          <th>Specs</th>
+          <th>Serial No.</th>
+          <th>Date Purchased</th>
+          <th class="admin-only">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${parts.map(p => `
+          <tr>
+            <td><strong>${escapeHTML(p.item_type || '')}</strong></td>
+            <td>${escapeHTML(p.brand || '')}</td>
+            <td>${escapeHTML(p.model || '')}</td>
+            <td>${escapeHTML(p.specs || '')}</td>
+            <td>${escapeHTML(p.serial_number || '')}</td>
+            <td>${escapeHTML(p.date_purchased || '')}</td>
+            <td class="admin-only">
+              <button class="btn btn-outline btn-sm" onclick="editPart('${compId}', '${p._id}')">✏️</button>
+              <button class="btn btn-danger btn-sm" onclick="deletePart('${p._id}')">🗑️</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
 }
 
-function openRepairModal(compId) { 
-  if (!isAdmin()) return alert('Admin access required.');
-  document.getElementById('repair-id').value = '';
-  document.getElementById('repair-comp-id').value = compId; 
-  document.getElementById('repair-modal-title').innerText = 'Log Repair';
-  openModal('repair-modal'); 
+function renderRepairTable(compId, history) {
+  if (history.length === 0) return '<p style="font-size: 0.8rem; color: var(--text-muted);">No maintenance logs recorded.</p>';
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Item</th>
+          <th>Description</th>
+          <th>Technician</th>
+          <th class="admin-only">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${history.map(r => `
+          <tr>
+            <td>${escapeHTML(r.log_date || '')}</td>
+            <td>${escapeHTML(r.item || '')}</td>
+            <td>${escapeHTML(r.description || '')}</td>
+            <td><span class="badge-qty">${escapeHTML(r.remarks || 'Unassigned')}</span></td>
+            <td class="admin-only">
+              <button class="btn btn-outline btn-sm" onclick="editRepair('${compId}', '${r._id}')">✏️</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteRepair('${r._id}')">🗑️</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
 }
 
-function openTechModal() { 
-  if (!isAdmin()) return alert('Admin access required.');
-  openModal('tech-modal'); 
+/* --- WORKSTATION ACTIONS --- */
+async function handleSaveWorkstation(e) {
+  e.preventDefault();
+  const id = document.getElementById('edit-comp-id').value;
+  const payload = {
+    property_name: document.getElementById('prop-name').value,
+    property_code: document.getElementById('prop-code').value,
+    location: document.getElementById('prop-loc').value,
+    department: document.getElementById('prop-dept').value,
+    drp1: document.getElementById('prop-drp1').value,
+    drp2: document.getElementById('prop-drp2').value
+  };
+
+  const url = id ? `/api/computers/${id}` : '/api/computers';
+  const method = id ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      closeModal('workstation-modal');
+      document.getElementById('add-workstation-form').reset();
+      await loadInventory();
+      await refreshDashboardStats();
+    }
+  } catch (err) {
+    console.error('Failed to save workstation:', err);
+  }
 }
 
 function editWorkstation(id) {
-  if (!isAdmin()) return alert('Admin access required.');
-  const item = inventory.find(c => getId(c) === id);
-  if (!item) return;
+  const comp = inventoryData.find(c => c._id === id);
+  if (!comp) return;
 
-  document.getElementById('edit-comp-id').value = getId(item);
-  document.getElementById('prop-name').value = item.property_name || '';
-  document.getElementById('prop-code').value = item.property_code || '';
-  document.getElementById('prop-loc').value = item.location || '';
-  document.getElementById('prop-dept').value = item.department || '';
-  document.getElementById('prop-drp1').value = item.drp1 || '';
-  document.getElementById('prop-drp2').value = item.drp2 || '';
+  document.getElementById('workstation-modal-title').textContent = 'Edit Workstation';
+  document.getElementById('edit-comp-id').value = comp._id;
+  document.getElementById('prop-name').value = comp.property_name || '';
+  document.getElementById('prop-code').value = comp.property_code || '';
+  document.getElementById('prop-loc').value = comp.location || '';
+  document.getElementById('prop-dept').value = comp.department || '';
+  document.getElementById('prop-drp1').value = comp.drp1 || '';
+  document.getElementById('prop-drp2').value = comp.drp2 || '';
 
-  document.getElementById('workstation-modal-title').innerText = 'Edit Workstation';
   openModal('workstation-modal');
 }
 
+async function deleteWorkstation(id) {
+  if (!confirm('Are you sure you want to delete this workstation and all associated components?')) return;
+  try {
+    const res = await fetch(`/api/computers/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      await loadInventory();
+      await refreshDashboardStats();
+    }
+  } catch (err) {
+    console.error('Delete workstation error:', err);
+  }
+}
+
+/* --- COMPONENT / PART ACTIONS --- */
+function openAddPartModal(compId) {
+  document.getElementById('part-modal-title').textContent = 'Add Component';
+  document.getElementById('add-part-form').reset();
+  document.getElementById('part-id').value = '';
+  document.getElementById('part-comp-id').value = compId;
+  openModal('part-modal');
+}
+
 function editPart(compId, partId) {
-  if (!isAdmin()) return alert('Admin access required.');
-  const comp = inventory.find(c => getId(c) === compId);
-  if (!comp) return;
-  const part = (comp.parts || []).find(p => getId(p) === partId);
+  const comp = inventoryData.find(c => c._id === compId);
+  const part = comp?.parts.find(p => p._id === partId);
   if (!part) return;
 
-  document.getElementById('part-id').value = getId(part);
+  document.getElementById('part-modal-title').textContent = 'Edit Component';
+  document.getElementById('part-id').value = part._id;
   document.getElementById('part-comp-id').value = compId;
   document.getElementById('part-type').value = part.item_type || '';
   document.getElementById('part-brand').value = part.brand || '';
@@ -613,52 +371,395 @@ function editPart(compId, partId) {
   document.getElementById('part-sn').value = part.serial_number || '';
   document.getElementById('part-specs').value = part.specs || '';
 
-  document.getElementById('part-modal-title').innerText = 'Edit Part';
   openModal('part-modal');
 }
 
+async function handleSavePart(e) {
+  e.preventDefault();
+  const partId = document.getElementById('part-id').value;
+  const compId = document.getElementById('part-comp-id').value;
+
+  const payload = {
+    computer_id: compId,
+    item_type: document.getElementById('part-type').value,
+    brand: document.getElementById('part-brand').value,
+    model: document.getElementById('part-model').value,
+    date_purchased: document.getElementById('part-date').value,
+    serial_number: document.getElementById('part-sn').value,
+    specs: document.getElementById('part-specs').value
+  };
+
+  const url = partId ? `/api/components/${partId}` : '/api/components';
+  const method = partId ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      closeModal('part-modal');
+      await loadInventory();
+      await refreshDashboardStats();
+    }
+  } catch (err) {
+    console.error('Failed to save component:', err);
+  }
+}
+
+async function deletePart(partId) {
+  if (!confirm('Are you sure you want to remove this part?')) return;
+  try {
+    const res = await fetch(`/api/components/${partId}`, { method: 'DELETE' });
+    if (res.ok) {
+      await loadInventory();
+      await refreshDashboardStats();
+    }
+  } catch (err) {
+    console.error('Failed to delete part:', err);
+  }
+}
+
+/* --- REPAIR LOG ACTIONS --- */
+function openAddRepairModal(compId) {
+  document.getElementById('repair-modal-title').textContent = 'Log Repair';
+  document.getElementById('add-repair-form').reset();
+  document.getElementById('repair-id').value = '';
+  document.getElementById('repair-comp-id').value = compId;
+  openModal('repair-modal');
+}
+
 function editRepair(compId, repairId) {
-  if (!isAdmin()) return alert('Admin access required.');
-  const comp = inventory.find(c => getId(c) === compId);
-  if (!comp) return;
-  const log = (comp.history || []).find(h => getId(h) === repairId);
+  const comp = inventoryData.find(c => c._id === compId);
+  const log = comp?.history.find(r => r._id === repairId);
   if (!log) return;
 
-  document.getElementById('repair-id').value = getId(log);
+  document.getElementById('repair-modal-title').textContent = 'Edit Repair Log';
+  document.getElementById('repair-id').value = log._id;
   document.getElementById('repair-comp-id').value = compId;
   document.getElementById('repair-date').value = log.log_date || '';
   document.getElementById('repair-item').value = log.item || '';
   document.getElementById('repair-desc').value = log.description || '';
   document.getElementById('repair-remarks').value = log.remarks || '';
 
-  document.getElementById('repair-modal-title').innerText = 'Edit Repair Log';
   openModal('repair-modal');
 }
 
-/* DELETE OPERATIONS */
-async function deleteComp(id) { 
-  if (!isAdmin()) return alert('Admin access required.');
-  if (confirm('Delete workstation?')) { 
-    const res = await fetch(`/api/computers/${id}`, { method: 'DELETE' }); 
-    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
-    loadInventory(); 
-  } 
+async function handleSaveRepair(e) {
+  e.preventDefault();
+  const repairId = document.getElementById('repair-id').value;
+  const compId = document.getElementById('repair-comp-id').value;
+
+  const payload = {
+    computer_id: compId,
+    log_date: document.getElementById('repair-date').value,
+    item: document.getElementById('repair-item').value,
+    description: document.getElementById('repair-desc').value,
+    remarks: document.getElementById('repair-remarks').value
+  };
+
+  const url = repairId ? `/api/repair-logs/${repairId}` : '/api/repair-logs';
+  const method = repairId ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      closeModal('repair-modal');
+      await loadInventory();
+      await refreshDashboardStats();
+    }
+  } catch (err) {
+    console.error('Failed to save repair log:', err);
+  }
 }
 
-async function deletePart(id) { 
-  if (!isAdmin()) return alert('Admin access required.');
-  if (confirm('Delete part?')) { 
-    const res = await fetch(`/api/components/${id}`, { method: 'DELETE' }); 
-    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
-    loadInventory(); 
-  } 
+async function deleteRepair(repairId) {
+  if (!confirm('Are you sure you want to remove this repair log?')) return;
+  try {
+    const res = await fetch(`/api/repair-logs/${repairId}`, { method: 'DELETE' });
+    if (res.ok) {
+      await loadInventory();
+      await refreshDashboardStats();
+    }
+  } catch (err) {
+    console.error('Failed to delete repair log:', err);
+  }
 }
 
-async function deleteRepair(id) { 
-  if (!isAdmin()) return alert('Admin access required.');
-  if (confirm('Delete log?')) { 
-    const res = await fetch(`/api/repair-logs/${id}`, { method: 'DELETE' }); 
-    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
-    loadInventory(); 
-  } 
+/* --- SPARE PARTS INVENTORY --- */
+async function openSparePartsModal() {
+  resetSpareForm();
+  await loadSpareParts();
+  openModal('spare-modal');
+}
+
+async function loadSpareParts() {
+  try {
+    const res = await fetch('/api/spare-parts');
+    sparePartsData = await res.json();
+    renderSparePartsList();
+  } catch (err) {
+    console.error('Failed to fetch spare parts:', err);
+  }
+}
+
+function renderSparePartsList() {
+  const container = document.getElementById('spare-parts-list');
+  container.innerHTML = '';
+
+  if (sparePartsData.length === 0) {
+    container.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1rem;">No spare parts available.</td></tr>';
+    return;
+  }
+
+  sparePartsData.forEach(spare => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="padding: 0.5rem;"><strong>${escapeHTML(spare.item_type || '')}</strong></td>
+      <td style="padding: 0.5rem;">${escapeHTML((spare.brand || '') + ' ' + (spare.model || '')).trim()}</td>
+      <td style="padding: 0.5rem;">${escapeHTML(spare.specs || '')}</td>
+      <td style="padding: 0.5rem;">${escapeHTML(spare.serial_number || 'N/A')}</td>
+      <td style="padding: 0.5rem;">${renderStatusBadge(spare.status)}</td>
+      <td class="admin-only" style="padding: 0.5rem; text-align: right;">
+        <button class="btn btn-outline btn-sm" onclick="editSparePart('${spare._id}')">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteSparePart('${spare._id}')">🗑️</button>
+      </td>
+    `;
+    container.appendChild(tr);
+  });
+}
+
+function renderStatusBadge(status = 'Available') {
+  let colorStyle = 'background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;';
+  if (status === 'In Use') {
+    colorStyle = 'background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;';
+  } else if (status === 'Defective') {
+    colorStyle = 'background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;';
+  }
+  return `<span style="display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; ${colorStyle}">${escapeHTML(status)}</span>`;
+}
+
+async function handleSaveSparePart(e) {
+  e.preventDefault();
+  const id = document.getElementById('spare-id').value;
+  const payload = {
+    item_type: document.getElementById('spare-type').value,
+    brand: document.getElementById('spare-brand').value,
+    model: document.getElementById('spare-model').value,
+    specs: document.getElementById('spare-specs').value,
+    serial_number: document.getElementById('spare-sn').value,
+    status: document.getElementById('spare-status').value
+  };
+
+  const url = id ? `/api/spare-parts/${id}` : '/api/spare-parts';
+  const method = id ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      resetSpareForm();
+      await loadSpareParts();
+      await refreshDashboardStats();
+    }
+  } catch (err) {
+    console.error('Failed to save spare part:', err);
+  }
+}
+
+function editSparePart(id) {
+  const item = sparePartsData.find(s => s._id === id);
+  if (!item) return;
+
+  document.getElementById('spare-id').value = item._id;
+  document.getElementById('spare-type').value = item.item_type || '';
+  document.getElementById('spare-brand').value = item.brand || '';
+  document.getElementById('spare-model').value = item.model || '';
+  document.getElementById('spare-specs').value = item.specs || '';
+  document.getElementById('spare-sn').value = item.serial_number || '';
+  document.getElementById('spare-status').value = item.status || 'Available';
+
+  document.getElementById('spare-submit-btn').textContent = 'Update Spare Part';
+  document.getElementById('cancel-spare-edit-btn').style.display = 'inline-block';
+}
+
+function resetSpareForm() {
+  document.getElementById('add-spare-form').reset();
+  document.getElementById('spare-id').value = '';
+  document.getElementById('spare-submit-btn').textContent = '+ Add Spare Part';
+  document.getElementById('cancel-spare-edit-btn').style.display = 'none';
+}
+
+async function deleteSparePart(id) {
+  if (!confirm('Are you sure you want to delete this spare part?')) return;
+  try {
+    const res = await fetch(`/api/spare-parts/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      await loadSpareParts();
+      await refreshDashboardStats();
+    }
+  } catch (err) {
+    console.error('Failed to delete spare part:', err);
+  }
+}
+
+/* --- TECHNICIAN MANAGEMENT --- */
+async function openTechModal() {
+  await loadTechnicians();
+  openModal('tech-modal');
+}
+
+async function loadTechnicians() {
+  try {
+    const res = await fetch('/api/technicians');
+    techniciansData = await res.json();
+    renderTechnicianList();
+    populateTechnicianDropdown();
+  } catch (err) {
+    console.error('Failed to fetch technicians:', err);
+  }
+}
+
+function renderTechnicianList() {
+  const container = document.getElementById('tech-manage-list');
+  container.innerHTML = '';
+
+  if (techniciansData.length === 0) {
+    container.innerHTML = '<li style="color: var(--text-muted); padding: 0.5rem; text-align: center;">No technicians configured.</li>';
+    return;
+  }
+
+  techniciansData.forEach(tech => {
+    const li = document.createElement('li');
+    li.className = 'tech-item';
+    li.innerHTML = `
+      <span>👤 ${escapeHTML(tech.name)}</span>
+      <button class="btn btn-danger btn-sm admin-only" onclick="deleteTechnician('${tech._id}')">Remove</button>
+    `;
+    container.appendChild(li);
+  });
+}
+
+function populateTechnicianDropdown() {
+  const select = document.getElementById('repair-remarks');
+  const currentValue = select.value;
+  select.innerHTML = '<option value="" disabled selected>-- Select Technician --</option>';
+
+  techniciansData.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.name;
+    opt.textContent = t.name;
+    select.appendChild(opt);
+  });
+
+  if (currentValue) select.value = currentValue;
+}
+
+async function handleAddTechnician(e) {
+  e.preventDefault();
+  const input = document.getElementById('new-tech-name');
+  const name = input.value.trim();
+  if (!name) return;
+
+  try {
+    const res = await fetch('/api/technicians', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+
+    if (res.ok) {
+      input.value = '';
+      await loadTechnicians();
+      await refreshDashboardStats();
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Failed to add technician');
+    }
+  } catch (err) {
+    console.error('Add technician error:', err);
+  }
+}
+
+async function deleteTechnician(id) {
+  if (!confirm('Are you sure you want to remove this technician?')) return;
+  try {
+    const res = await fetch(`/api/technicians/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      await loadTechnicians();
+      await refreshDashboardStats();
+    }
+  } catch (err) {
+    console.error('Delete technician error:', err);
+  }
+}
+
+/* --- EXPORT TO EXCEL --- */
+function exportToExcel() {
+  const url = currentFilterPC === 'ALL' 
+    ? '/api/export/excel' 
+    : `/api/export/excel?computerId=${currentFilterPC}`;
+  window.location.href = url;
+}
+
+/* --- SEARCH & UTILITIES --- */
+function handleSearch(term) {
+  const query = term.toLowerCase().trim();
+  if (!query) {
+    renderInventory();
+    return;
+  }
+
+  const filtered = inventoryData.filter(comp => {
+    const matchMeta = (comp.property_name || '').toLowerCase().includes(query) ||
+                      (comp.property_code || '').toLowerCase().includes(query) ||
+                      (comp.location || '').toLowerCase().includes(query) ||
+                      (comp.department || '').toLowerCase().includes(query);
+
+    const matchParts = (comp.parts || []).some(p => 
+      (p.item_type || '').toLowerCase().includes(query) ||
+      (p.brand || '').toLowerCase().includes(query) ||
+      (p.model || '').toLowerCase().includes(query) ||
+      (p.serial_number || '').toLowerCase().includes(query) ||
+      (p.specs || '').toLowerCase().includes(query)
+    );
+
+    const matchHistory = (comp.history || []).some(h => 
+      (h.item || '').toLowerCase().includes(query) ||
+      (h.description || '').toLowerCase().includes(query) ||
+      (h.remarks || '').toLowerCase().includes(query)
+    );
+
+    return matchMeta || matchParts || matchHistory;
+  });
+
+  renderInventory(filtered);
+}
+
+function openModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) modal.classList.add('active');
+}
+
+function closeModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) modal.classList.remove('active');
+}
+
+function escapeHTML(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }

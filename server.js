@@ -49,8 +49,20 @@ const TechnicianSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true }
 });
 
+// New Schema & Model for Dedicated Spare Parts
+const SparePartSchema = new mongoose.Schema({
+  item_type: { type: String, required: true },
+  brand: String,
+  model: String,
+  specs: String,
+  serial_number: String,
+  status: { type: String, default: 'Available' }, // 'Available', 'In Use', 'Defective'
+  date_added: { type: String, default: () => new Date().toISOString().split('T')[0] }
+});
+
 const Computer = mongoose.model('Computer', ComputerSchema);
 const Technician = mongoose.model('Technician', TechnicianSchema);
+const SparePart = mongoose.model('SparePart', SparePartSchema);
 
 // Express Middleware
 app.use(express.json());
@@ -103,6 +115,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
   try {
     const computers = await Computer.find();
     const totalTechs = await Technician.countDocuments();
+    const totalSpares = await SparePart.countDocuments();
     let totalParts = 0;
     let totalRepairs = 0;
 
@@ -111,7 +124,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
       totalRepairs += (c.history || []).length;
     });
 
-    res.json({ totalComputers: computers.length, totalParts, totalRepairs, totalTechs });
+    res.json({ totalComputers: computers.length, totalParts, totalRepairs, totalTechs, totalSpares });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -355,6 +368,45 @@ app.delete('/api/components/:id', requireAdmin, async (req, res) => {
       { 'parts._id': req.params.id },
       { $pull: { parts: { _id: req.params.id } } }
     );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* --- SPARE PARTS ROUTES --- */
+app.get('/api/spare-parts', async (req, res) => {
+  try {
+    const spares = await SparePart.find().sort({ date_added: -1 });
+    res.json(spares);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/spare-parts', requireAdmin, async (req, res) => {
+  try {
+    const spare = new SparePart(req.body);
+    await spare.save();
+    res.status(201).json(spare);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/spare-parts/:id', requireAdmin, async (req, res) => {
+  try {
+    const spare = await SparePart.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!spare) return res.status(404).json({ error: 'Spare part not found' });
+    res.json(spare);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/spare-parts/:id', requireAdmin, async (req, res) => {
+  try {
+    await SparePart.findByIdAndDelete(req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
