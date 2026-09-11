@@ -49,8 +49,20 @@ const TechnicianSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true }
 });
 
+// Spare Part Schema for Unassigned/Standby Parts
+const SparePartSchema = new mongoose.Schema({
+  item_type: { type: String, required: true },
+  brand: String,
+  model: String,
+  specs: String,
+  serial_number: String,
+  status: { type: String, default: 'Available' },
+  date_added: { type: Date, default: Date.now }
+});
+
 const Computer = mongoose.model('Computer', ComputerSchema);
 const Technician = mongoose.model('Technician', TechnicianSchema);
+const SparePart = mongoose.model('SparePart', SparePartSchema);
 
 // Express Middleware
 app.use(express.json());
@@ -99,6 +111,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
   try {
     const computers = await Computer.find();
     const totalTechs = await Technician.countDocuments();
+    const totalSpares = await SparePart.countDocuments();
     let totalParts = 0;
     let totalRepairs = 0;
 
@@ -107,7 +120,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
       totalRepairs += (c.history || []).length;
     });
 
-    res.json({ totalComputers: computers.length, totalParts, totalRepairs, totalTechs });
+    res.json({ totalComputers: computers.length, totalParts, totalRepairs, totalTechs, totalSpares });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -186,7 +199,6 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       if (part.specs) lines.push(`SPECS: ${part.specs.trim()}`);
       if (part.serial_number) lines.push(`SN: ${part.serial_number.trim()}`);
 
-      // Fallback in case brand/model are saved together without explicit fields
       if (lines.length === 0) {
         const fallback = `${part.brand || ''} ${part.model || ''}`.trim();
         if (fallback) lines.push(fallback);
@@ -230,7 +242,6 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
         remarks: ''
       });
 
-      // Calculate dynamic row height to fit explicitly labeled fields
       const maxLines = Math.max(
         systemParts.length,
         monitorParts.length * 3,
@@ -241,11 +252,9 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       );
       row.height = Math.max(24, maxLines * 11);
 
-      // Cell Borders and Alignment
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         cell.font = { name: 'Calibri', size: 7.5 };
         
-        // Align System components to the left; keep all other fields centered
         const isLeftAligned = colNumber === 8;
         cell.alignment = { 
           vertical: 'middle', 
@@ -299,6 +308,44 @@ app.put('/api/computers/:id', requireAdmin, async (req, res) => {
 app.delete('/api/computers/:id', requireAdmin, async (req, res) => {
   await Computer.findByIdAndDelete(req.params.id);
   res.json({ success: true });
+});
+
+/* --- SPARE PARTS ROUTES --- */
+app.get('/api/spares', async (req, res) => {
+  try {
+    const spares = await SparePart.find().sort({ date_added: -1 });
+    res.json(spares);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/spares', requireAdmin, async (req, res) => {
+  try {
+    const spare = new SparePart(req.body);
+    await spare.save();
+    res.status(201).json(spare);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/spares/:id', requireAdmin, async (req, res) => {
+  try {
+    const spare = await SparePart.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json(spare);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/spares/:id', requireAdmin, async (req, res) => {
+  try {
+    await SparePart.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /* --- PARTS / COMPONENTS ROUTES --- */
@@ -380,7 +427,11 @@ app.delete('/api/technicians/:id', requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
-// Wildcard route pointing directly to public/index.html
+/* --- PAGE ROUTING --- */
+app.get('/spares', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'spares.html'));
+});
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));

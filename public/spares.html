@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spare Parts Inventory</title>
+  
+  <!-- LINKED UNIQUE SPARES CSS -->
+  <link rel="stylesheet" href="spares.css">
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <header class="navbar">
+    <div class="container-fluid nav-content">
+      <div class="brand">
+        <span class="brand-icon">📦</span>
+        <h2>Spare Parts Inventory</h2>
+      </div>
+      <div class="actions">
+        <input type="text" id="search-spare-input" placeholder="Search spares..." class="search-bar">
+        <a href="index.html" class="btn btn-primary btn-sm">🖥️ Workstations</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- APP LAYOUT -->
+  <div class="app-layout">
+    
+    <!-- SIDEBAR FOR CATEGORIES -->
+    <aside class="sidebar">
+      <div class="sidebar-title">Categories</div>
+      <ul id="spare-category-sidebar">
+        <li class="active" onclick="filterSpareCategory('ALL', this)">
+          <span class="icon">📦</span>
+          <span class="label">All Spare Parts</span>
+        </li>
+        <li onclick="filterSpareCategory('RAM', this)">
+          <span class="icon">⚡</span>
+          <span class="label">RAM Modules</span>
+        </li>
+        <li onclick="filterSpareCategory('Storage', this)">
+          <span class="icon">💾</span>
+          <span class="label">Storage Drives</span>
+        </li>
+        <li onclick="filterSpareCategory('GPU', this)">
+          <span class="icon">🎮</span>
+          <span class="label">Graphics Cards</span>
+        </li>
+        <li onclick="filterSpareCategory('Peripherals', this)">
+          <span class="icon">⌨️</span>
+          <span class="label">Peripherals</span>
+        </li>
+      </ul>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+      
+      <div class="status-bar">
+        <div id="user-info"><span>View Only Mode</span></div>
+        <button class="btn btn-primary btn-sm admin-only" onclick="openAddSpareModal()">+ Add Spare Part</button>
+      </div>
+
+      <!-- ANALYTICS WIDGETS -->
+      <div id="analytics-dashboard">
+        <div class="stat-card card-blue">
+          <div class="stat-title">Total Spares</div>
+          <div class="stat-value" id="stat-total-spares">0</div>
+        </div>
+        <div class="stat-card card-green">
+          <div class="stat-title">Available</div>
+          <div class="stat-value" id="stat-available-spares">0</div>
+        </div>
+        <div class="stat-card card-amber">
+          <div class="stat-title">In Use</div>
+          <div class="stat-value" id="stat-inuse-spares">0</div>
+        </div>
+        <div class="stat-card card-purple">
+          <div class="stat-title">Defective</div>
+          <div class="stat-value" id="stat-defective-spares">0</div>
+        </div>
+      </div>
+
+      <!-- SPARE PARTS CARDS CONTAINER -->
+      <div id="spare-parts-container"></div>
+
+    </main>
+  </div>
+
+  <!-- MODAL: ADD / EDIT SPARE PART -->
+  <div id="spare-modal" class="modal">
+    <div class="modal-card">
+      <h3 id="spare-modal-title">Add Spare Part</h3>
+      <form id="add-spare-form">
+        <input type="hidden" id="spare-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category / Type</label>
+            <select id="spare-type" class="form-select" required>
+              <option value="RAM">RAM</option>
+              <option value="Storage">Storage</option>
+              <option value="GPU">GPU</option>
+              <option value="Peripherals">Peripherals</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Brand</label>
+            <input type="text" id="spare-brand" placeholder="Kingston..." required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Model</label>
+            <input type="text" id="spare-model" placeholder="Fury Beast..." required>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="spare-status" class="form-select" required>
+              <option value="Available">Available</option>
+              <option value="In Use">In Use</option>
+              <option value="Defective">Defective</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Serial Number</label>
+          <input type="text" id="spare-serial" placeholder="SN-123456...">
+        </div>
+
+        <div class="form-group">
+          <label>Specifications</label>
+          <input type="text" id="spare-specs" placeholder="DDR4 3200MHz 8GB...">
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('spare-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- LINKED UNIQUE SPARES JS -->
+  <script src="spares.js"></script>
+</body>
+</html>
