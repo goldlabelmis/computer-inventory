@@ -36,23 +36,30 @@
         <div id="user-info"><span>View Only Mode</span></div>
       </div>
 
-      <!-- ANALYTICS DASHBOARD WIDGET -->
+      <!-- ANALYTICS DASHBOARD WIDGET WITH DISTINCT COLORS -->
       <div id="analytics-dashboard" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-        <div class="card" style="padding: 1rem; text-align: center; border-radius: 8px;">
+        <!-- Total PCs: Subtle Blue -->
+        <div class="card" style="padding: 1rem; text-align: center; border-radius: 8px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;">
           <h4 style="margin: 0; font-size: 0.9rem;">💻 Total PCs</h4>
-          <h2 id="stat-pcs" style="margin: 0.5rem 0 0 0; font-size: 1.8rem;">0</h2>
+          <h2 id="stat-pcs" style="margin: 0.5rem 0 0 0; font-size: 1.8rem; color: #0369a1;">0</h2>
         </div>
-        <div class="card" style="padding: 1rem; text-align: center; border-radius: 8px;">
+
+        <!-- Total Parts: Subtle Green -->
+        <div class="card" style="padding: 1rem; text-align: center; border-radius: 8px; background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;">
           <h4 style="margin: 0; font-size: 0.9rem;">🧩 Total Parts</h4>
-          <h2 id="stat-parts" style="margin: 0.5rem 0 0 0; font-size: 1.8rem;">0</h2>
+          <h2 id="stat-parts" style="margin: 0.5rem 0 0 0; font-size: 1.8rem; color: #15803d;">0</h2>
         </div>
-        <div class="card" style="padding: 1rem; text-align: center; border-radius: 8px;">
+
+        <!-- Total Repairs: Subtle Orange/Amber -->
+        <div class="card" style="padding: 1rem; text-align: center; border-radius: 8px; background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa;">
           <h4 style="margin: 0; font-size: 0.9rem;">🛠️ Total Repairs</h4>
-          <h2 id="stat-repairs" style="margin: 0.5rem 0 0 0; font-size: 1.8rem;">0</h2>
+          <h2 id="stat-repairs" style="margin: 0.5rem 0 0 0; font-size: 1.8rem; color: #c2410c;">0</h2>
         </div>
-        <div class="card" style="padding: 1rem; text-align: center; border-radius: 8px;">
+
+        <!-- Technicians: Subtle Purple -->
+        <div class="card" style="padding: 1rem; text-align: center; border-radius: 8px; background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff;">
           <h4 style="margin: 0; font-size: 0.9rem;">👤 Technicians</h4>
-          <h2 id="stat-techs" style="margin: 0.5rem 0 0 0; font-size: 1.8rem;">0</h2>
+          <h2 id="stat-techs" style="margin: 0.5rem 0 0 0; font-size: 1.8rem; color: #6b21a8;">0</h2>
         </div>
       </div>
 
