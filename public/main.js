@@ -52,6 +52,15 @@ document.addEventListener('DOMContentLoaded', () => {
   loadInventory();
   loadTechnicians();
 
+  // SIDEBAR TOGGLE HANDLER
+  const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+  const appSidebar = document.getElementById('app-sidebar') || document.querySelector('.sidebar');
+  if (sidebarToggleBtn && appSidebar) {
+    sidebarToggleBtn.addEventListener('click', () => {
+      appSidebar.classList.toggle('collapsed');
+    });
+  }
+
   document.getElementById('search-input')?.addEventListener('input', () => filterData());
 
   // LOGIN FORM
@@ -216,6 +225,7 @@ async function checkAuth() {
       if (userInfoEl) userInfoEl.innerHTML = `<span>Logged in as: <b>${currentUser.username}</b> (${currentUser.role})</span>`;
       if (authBtn) {
         authBtn.innerText = '🔓 Logout';
+        authBtn.className = 'btn btn-danger';
         authBtn.onclick = logout;
       }
       loadDashboardStats();
@@ -223,6 +233,7 @@ async function checkAuth() {
       if (userInfoEl) userInfoEl.innerHTML = `<span>View Only Mode</span>`;
       if (authBtn) {
         authBtn.innerText = '🔒 Login';
+        authBtn.className = 'btn btn-secondary';
         authBtn.onclick = () => openModal('login-modal');
       }
       updateDashboardUI(inventory.length, 0, 0, technicians.length);
@@ -345,7 +356,12 @@ async function deleteTech(id) {
 function renderSidebar() {
   const sidebar = document.getElementById('pc-list-sidebar');
   if (!sidebar) return;
-  sidebar.innerHTML = `<li class="${selectedPCId === 'ALL' ? 'active' : ''}" onclick="filterByPC('ALL')">💻 All PCs</li>`;
+  sidebar.innerHTML = `
+    <li class="${selectedPCId === 'ALL' ? 'active' : ''}" onclick="filterByPC('ALL')">
+      <span class="icon">💻</span>
+      <span class="label">All PCs</span>
+    </li>
+  `;
 
   const sortedInventory = [...inventory].sort((a, b) => (a.property_name || '').localeCompare(b.property_name || ''));
 
@@ -353,7 +369,10 @@ function renderSidebar() {
     const itemId = getId(item);
     const li = document.createElement('li');
     li.className = selectedPCId == itemId ? 'active' : '';
-    li.innerHTML = `🖥️ ${item.property_name}`;
+    li.innerHTML = `
+      <span class="icon">🖥️</span>
+      <span class="label">${item.property_name}</span>
+    `;
     li.onclick = () => filterByPC(itemId);
     sidebar.appendChild(li);
   });

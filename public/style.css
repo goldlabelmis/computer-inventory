@@ -6,12 +6,17 @@
   --text-muted: #64748b;
   --primary: #0284c7; 
   --primary-hover: #0369a1;
+  --secondary-hover: #cbd5e1;
   --warning: #f59e0b; 
+  --warning-hover: #d97706;
   --danger: #ef4444; 
+  --danger-hover: #dc2626;
   --sidebar-hover: #f1f5f9;
   --sidebar-active-bg: #e0f2fe;
   --table-header-bg: #f8fafc;
   --modal-overlay: rgba(0, 0, 0, 0.4);
+  --sidebar-width: 250px;
+  --sidebar-collapsed-width: 68px;
 }
 
 [data-theme="dark"] {
@@ -22,8 +27,11 @@
   --text-muted: #94a3b8;
   --primary: #38bdf8;
   --primary-hover: #0284c7;
+  --secondary-hover: #475569;
   --warning: #fbbf24;
+  --warning-hover: #f59e0b;
   --danger: #f87171;
+  --danger-hover: #ef4444;
   --sidebar-hover: #334155;
   --sidebar-active-bg: #1e293b;
   --table-header-bg: #1e293b;
@@ -82,21 +90,36 @@ body:not(.is-admin) .admin-only {
   overflow: hidden; 
 }
 
+/* COLLAPSIBLE SIDEBAR */
 .sidebar {
-  width: 250px;
+  width: var(--sidebar-width);
   background: var(--card);
   border-right: 1px solid var(--border);
-  padding: 1.5rem 1rem;
+  padding: 1.5rem 0.75rem;
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
 }
 
-.sidebar h3 {
+.sidebar.collapsed {
+  width: var(--sidebar-collapsed-width);
+}
+
+.sidebar h3, .sidebar .sidebar-title {
   font-size: 0.85rem;
   color: var(--text-muted);
   text-transform: uppercase;
   margin-bottom: 0.8rem;
   letter-spacing: 0.5px;
+  padding-left: 0.4rem;
+  transition: opacity 0.15s ease;
+}
+
+.sidebar.collapsed h3,
+.sidebar.collapsed .sidebar-title {
+  display: none;
 }
 
 .sidebar ul { list-style: none; }
@@ -110,10 +133,23 @@ body:not(.is-admin) .admin-only {
   margin-bottom: 0.3rem;
   color: var(--text);
   transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .sidebar li:hover { background: var(--sidebar-hover); color: var(--primary); }
 .sidebar li.active { background: var(--sidebar-active-bg); color: var(--primary); font-weight: 600; }
+
+.sidebar.collapsed li .label {
+  display: none;
+}
+
+.sidebar li .icon {
+  font-size: 1.1rem;
+  min-width: 24px;
+  text-align: center;
+}
 
 .main-content { 
   flex: 1; 
@@ -211,14 +247,69 @@ table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-botto
 th, td { padding: 0.6rem; text-align: left; border-bottom: 1px solid var(--border); color: var(--text); }
 th { background: var(--table-header-bg); font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; }
 
-/* BUTTONS */
-.btn { background: var(--primary); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-weight: 500; transition: background-color 0.15s ease; }
-.btn:hover { opacity: 0.9; }
+/* SEMANTIC BUTTON SYSTEM */
+.btn { 
+  background: var(--primary); 
+  color: #fff; 
+  border: 1px solid transparent; 
+  padding: 0.5rem 1rem; 
+  border-radius: 6px; 
+  cursor: pointer; 
+  font-weight: 500; 
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.btn:hover { background: var(--primary-hover); }
+
+.btn-primary { 
+  background: var(--primary); 
+  color: #fff; 
+}
+.btn-primary:hover { background: var(--primary-hover); }
+
+.btn-secondary { 
+  background: var(--card); 
+  border: 1px solid var(--border); 
+  color: var(--text); 
+}
+.btn-secondary:hover { background: var(--sidebar-hover); }
+
 .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
-.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+
+.btn-outline { 
+  background: transparent; 
+  border: 1px solid var(--border); 
+  color: var(--text); 
+}
 .btn-outline:hover { background: var(--sidebar-hover); }
-.btn-warning { background: var(--warning); color: #fff; }
-.btn-danger { background: var(--danger); color: #fff; }
+
+.btn-warning { 
+  background: var(--warning); 
+  color: #fff; 
+}
+.btn-warning:hover { background: var(--warning-hover); }
+
+.btn-danger { 
+  background: var(--danger); 
+  color: #fff; 
+}
+.btn-danger:hover { background: var(--danger-hover); }
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  color: var(--text);
+  transition: background-color 0.15s ease;
+}
+.btn-icon:hover {
+  background-color: var(--sidebar-hover);
+}
 
 /* FORM CONTROLS & MODALS */
 .modal { 
