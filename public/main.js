@@ -240,6 +240,7 @@ async function checkAuth() {
     }
 
     toggleAdminControls();
+    renderTechManageList(); // Refresh list UI after currentUser role resolved
     filterData();
   } catch (err) {
     console.error('Auth check error:', err);
@@ -336,9 +337,11 @@ function renderTechManageList() {
     const techId = getId(t);
     const li = document.createElement('li');
     li.className = 'tech-item';
+    li.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #e2e8f0;';
+    
     li.innerHTML = `
       <span>👤 ${t.name}</span>
-      ${isAdmin() ? `<button class="btn btn-sm btn-danger" onclick="deleteTech('${techId}')">❌</button>` : ''}
+      ${isAdmin() ? `<button class="btn btn-sm btn-danger" style="padding: 2px 8px; cursor: pointer;" onclick="deleteTech('${techId}')">❌</button>` : ''}
     `;
     list.appendChild(li);
   });
