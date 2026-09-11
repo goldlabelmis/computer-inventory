@@ -132,7 +132,7 @@ function renderSpareCards(dataToRender = getFilteredData()) {
   });
 }
 
-// Deduct 0.5 bottle of ink quick action (Includes float precision rounding)
+// Deduct 0.5 bottle of ink quick action (Includes detailed backend error messaging)
 async function consumeInk(id, currentQty) {
   const targetItem = sparePartsList.find(i => i.id === id);
   if (!targetItem) return;
@@ -141,14 +141,12 @@ async function consumeInk(id, currentQty) {
   const rawQty = Math.max(0, currentQty - 0.5);
   const newQty = parseFloat(rawQty.toFixed(2));
 
+  // Preserves all original properties so the server doesn't reject missing fields
   const payload = {
+    ...targetItem,
     item_type: targetItem.type,
-    brand: targetItem.brand,
-    model: targetItem.model,
-    color: targetItem.color,
-    quantity: newQty,
-    specs: targetItem.specs || '',
     serial_number: targetItem.serial || '',
+    quantity: newQty,
     status: newQty === 0 ? 'Defective' : targetItem.status
   };
 
@@ -162,10 +160,13 @@ async function consumeInk(id, currentQty) {
     if (res.ok) {
       await loadSpareParts();
     } else {
-      alert('Failed to update ink level.');
+      // Displays the exact error returned by server.js
+      const errData = await res.json().catch(() => ({}));
+      alert(`Failed to update ink level: ${errData.error || res.statusText || 'Server error'}`);
     }
   } catch (err) {
     console.error('Consume Ink Error:', err);
+    alert('Network error while updating ink level.');
   }
 }
 
