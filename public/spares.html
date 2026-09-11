@@ -51,6 +51,31 @@
           <span class="icon">⌨️</span>
           <span class="label">Peripherals</span>
         </li>
+        
+        <!-- INK MAIN CATEGORY -->
+        <li onclick="filterSpareCategory('Ink', this)">
+          <span class="icon">💧</span>
+          <span class="label">Ink</span>
+        </li>
+        <!-- INK SUBCATEGORIES -->
+        <ul class="sub-category-list" style="padding-left: 20px; list-style: none;">
+          <li onclick="filterInkColor('Black', this)" class="sub-item">
+            <span class="icon">⚫</span>
+            <span class="label">Black Ink</span>
+          </li>
+          <li onclick="filterInkColor('Magenta', this)" class="sub-item">
+            <span class="icon">🔴</span>
+            <span class="label">Magenta Ink</span>
+          </li>
+          <li onclick="filterInkColor('Cyan', this)" class="sub-item">
+            <span class="icon">🔵</span>
+            <span class="label">Cyan Ink</span>
+          </li>
+          <li onclick="filterInkColor('Yellow', this)" class="sub-item">
+            <span class="icon">🟡</span>
+            <span class="label">Yellow Ink</span>
+          </li>
+        </ul>
       </ul>
     </aside>
 
@@ -97,23 +122,24 @@
         <div class="form-row">
           <div class="form-group">
             <label>Category / Type</label>
-            <select id="spare-type" class="form-select" required>
+            <select id="spare-type" class="form-select" onchange="toggleInkColorField()" required>
               <option value="RAM">RAM</option>
               <option value="Storage">Storage</option>
               <option value="GPU">GPU</option>
               <option value="Peripherals">Peripherals</option>
+              <option value="Ink">Ink</option>
             </select>
           </div>
           <div class="form-group">
             <label>Brand</label>
-            <input type="text" id="spare-brand" placeholder="Kingston..." required>
+            <input type="text" id="spare-brand" placeholder="Kingston / Epson..." required>
           </div>
         </div>
 
         <div class="form-row">
           <div class="form-group">
             <label>Model</label>
-            <input type="text" id="spare-model" placeholder="Fury Beast..." required>
+            <input type="text" id="spare-model" placeholder="Fury Beast / L3210..." required>
           </div>
           <div class="form-group">
             <label>Status</label>
@@ -125,6 +151,18 @@
           </div>
         </div>
 
+        <!-- CONDITIONAL INK COLOR FIELD -->
+        <div class="form-group" id="ink-color-group" style="display: none;">
+          <label>Ink Color</label>
+          <select id="spare-color" class="form-select">
+            <option value="">Select Color...</option>
+            <option value="Black">Black</option>
+            <option value="Magenta">Magenta</option>
+            <option value="Cyan">Cyan</option>
+            <option value="Yellow">Yellow</option>
+          </select>
+        </div>
+
         <div class="form-group">
           <label>Serial Number</label>
           <input type="text" id="spare-serial" placeholder="SN-123456...">
@@ -132,7 +170,7 @@
 
         <div class="form-group">
           <label>Specifications</label>
-          <input type="text" id="spare-specs" placeholder="DDR4 3200MHz 8GB...">
+          <input type="text" id="spare-specs" placeholder="DDR4 3200MHz / 70ml Bottle...">
         </div>
 
         <div class="modal-actions">

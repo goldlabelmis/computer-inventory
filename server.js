@@ -49,14 +49,15 @@ const TechnicianSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true }
 });
 
-// Spare Part Schema for Unassigned/Standby Parts
+// Updated Spare Part Schema with Color Field for Inks
 const SparePartSchema = new mongoose.Schema({
   item_type: { type: String, required: true },
   brand: String,
   model: String,
   specs: String,
   serial_number: String,
-  status: { type: String, default: 'Available' },
+  color: { type: String, default: '' }, // For Ink colors (Black, Magenta, Cyan, Yellow)
+  status: { type: String, enum: ['Available', 'In Use', 'Defective'], default: 'Available' },
   date_added: { type: Date, default: Date.now }
 });
 

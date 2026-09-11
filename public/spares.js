@@ -1,40 +1,43 @@
-// Local Storage Keys
-const SPARES_STORAGE_KEY = 'spare_inventory_items';
+// Local Storage Backup & API Endpoint Configuration
+const SPARES_API_URL = '/api/spares';
 const AUTH_KEY = 'is_admin_logged_in';
-
-// Default Demo Data
-const defaultSpareParts = [
-  { id: '1', type: 'RAM', brand: 'Kingston', model: 'Fury Beast 8GB', specs: 'DDR4 3200MHz', serial: 'SN-RAM-9081', status: 'Available' },
-  { id: '2', type: 'Storage', brand: 'Samsung', model: '970 EVO Plus', specs: '500GB NVMe M.2', serial: 'SN-SSD-4412', status: 'In Use' },
-  { id: '3', type: 'GPU', brand: 'ASUS', model: 'GTX 1650', specs: '4GB GDDR6', serial: 'SN-GPU-8821', status: 'Available' },
-  { id: '4', type: 'Peripherals', brand: 'Logitech', model: 'K120', specs: 'USB Wired Keyboard', serial: 'SN-KB-1029', status: 'Defective' }
-];
 
 let sparePartsList = [];
 let currentCategory = 'ALL';
+let currentColorFilter = null;
 
 // Initialize Page Data
 document.addEventListener('DOMContentLoaded', () => {
   loadSpareParts();
   checkAdminAuth();
   setupEventListeners();
-  renderSpareCards();
-  updateAnalytics();
 });
 
-// Load Spares from LocalStorage
-function loadSpareParts() {
-  const stored = localStorage.getItem(SPARES_STORAGE_KEY);
-  if (stored) {
-    sparePartsList = JSON.parse(stored);
-  } else {
-    sparePartsList = [...defaultSpareParts];
-    saveToStorage();
+// Load Spares from MongoDB API
+async function loadSpareParts() {
+  try {
+    const response = await fetch(SPARES_API_URL);
+    if (response.ok) {
+      const data = await response.json();
+      sparePartsList = data.map(item => ({
+        id: item._id,
+        type: item.item_type || item.type,
+        brand: item.brand,
+        model: item.model,
+        specs: item.specs,
+        serial: item.serial_number || item.serial,
+        color: item.color || '',
+        status: item.status || 'Available'
+      }));
+    } else {
+      console.warn('Backend API unavailable. Falling back to local state.');
+    }
+  } catch (err) {
+    console.error('Error fetching spare parts:', err);
+  } finally {
+    renderSpareCards();
+    updateAnalytics();
   }
-}
-
-function saveToStorage() {
-  localStorage.setItem(SPARES_STORAGE_KEY, JSON.stringify(sparePartsList));
 }
 
 // Admin Authentication UI Check
@@ -59,7 +62,7 @@ function renderSpareCards(dataToRender = getFilteredData()) {
   if (dataToRender.length === 0) {
     container.innerHTML = `
       <div class="device-card">
-        <p style="color: var(--text-muted); text-align: center;">No spare parts found.</p>
+        <p style="color: var(--text-muted, #6c757d); text-align: center; margin: 0;">No spare parts found.</p>
       </div>`;
     return;
   }
@@ -72,16 +75,20 @@ function renderSpareCards(dataToRender = getFilteredData()) {
     if (item.status === 'In Use') badgeClass = 'badge-inuse';
     if (item.status === 'Defective') badgeClass = 'badge-defective';
 
+    // Display ink color if item type is Ink
+    const isInk = (item.type || '').toLowerCase() === 'ink';
+    const colorBadge = isInk && item.color ? `<span class="badge badge-info" style="background-color: #6c757d; margin-left: 5px;">${escapeHTML(item.color)}</span>` : '';
+
     card.innerHTML = `
-      <div class="device-meta">
-        <div class="meta-item"><label>Type</label><span>${escapeHTML(item.type)}</span></div>
-        <div class="meta-item"><label>Brand & Model</label><span>${escapeHTML(item.brand)} ${escapeHTML(item.model)}</span></div>
-        <div class="meta-item"><label>Specifications</label><span>${escapeHTML(item.specs || 'N/A')}</span></div>
-        <div class="meta-item"><label>Serial Number</label><span>${escapeHTML(item.serial || 'N/A')}</span></div>
-        <div class="meta-item"><label>Status</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
-        <div class="card-actions admin-only">
-          <button class="btn btn-warning btn-sm" onclick="editSparePart('${item.id}')">✏️ Edit</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteSparePart('${item.id}')">Delete</button>
+      <div class="device-meta" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <div class="meta-item"><label>TYPE</label><span>${escapeHTML(item.type)} ${colorBadge}</span></div>
+        <div class="meta-item"><label>BRAND & MODEL</label><span>${escapeHTML(item.brand)} ${escapeHTML(item.model)}</span></div>
+        <div class="meta-item"><label>SPECIFICATIONS</label><span>${escapeHTML(item.specs || 'N/A')}</span></div>
+        <div class="meta-item"><label>SERIAL NUMBER</label><span>${escapeHTML(item.serial || 'N/A')}</span></div>
+        <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
+        <div class="card-actions admin-only" style="display: flex; gap: 8px;">
+          <button class="btn btn-warning btn-sm" style="background-color: #fca311; border: none; color: white;" onclick="editSparePart('${item.id}')">✏️ Edit</button>
+          <button class="btn btn-danger btn-sm" style="background-color: #ef476f; border: none; color: white;" onclick="deleteSparePart('${item.id}')">Delete Unit</button>
         </div>
       </div>
     `;
@@ -90,25 +97,29 @@ function renderSpareCards(dataToRender = getFilteredData()) {
   });
 }
 
-// Get Filtered Data by Category & Search
+// Get Filtered Data by Category, Ink Color, & Search Input
 function getFilteredData() {
   const searchTerm = document.getElementById('search-spare-input')?.value.toLowerCase() || '';
 
   return sparePartsList.filter(item => {
-    const matchesCategory = currentCategory === 'ALL' || item.type.toUpperCase() === currentCategory.toUpperCase();
+    const matchesCategory = currentCategory === 'ALL' || (item.type || '').toUpperCase() === currentCategory.toUpperCase();
+    const matchesColor = !currentColorFilter || (item.color || '').toLowerCase() === currentColorFilter.toLowerCase();
+    
     const matchesSearch = 
-      item.type.toLowerCase().includes(searchTerm) ||
-      item.brand.toLowerCase().includes(searchTerm) ||
-      item.model.toLowerCase().includes(searchTerm) ||
-      item.serial.toLowerCase().includes(searchTerm);
+      (item.type || '').toLowerCase().includes(searchTerm) ||
+      (item.brand || '').toLowerCase().includes(searchTerm) ||
+      (item.model || '').toLowerCase().includes(searchTerm) ||
+      (item.serial || '').toLowerCase().includes(searchTerm) ||
+      (item.color || '').toLowerCase().includes(searchTerm);
 
-    return matchesCategory && matchesSearch;
+    return matchesCategory && matchesColor && matchesSearch;
   });
 }
 
-// Category Filtering
+// Main Category Filtering
 function filterSpareCategory(category, element) {
   currentCategory = category;
+  currentColorFilter = null; // Reset ink color filter when changing category
   
   // Highlight sidebar element
   document.querySelectorAll('#spare-category-sidebar li').forEach(li => li.classList.remove('active'));
@@ -117,7 +128,19 @@ function filterSpareCategory(category, element) {
   renderSpareCards();
 }
 
-// Update Top Analytics Widgets
+// Subcategory Ink Color Filtering
+function filterInkColor(color, element) {
+  currentCategory = 'Ink';
+  currentColorFilter = color;
+
+  // Highlight active sub-item
+  document.querySelectorAll('#spare-category-sidebar li').forEach(li => li.classList.remove('active'));
+  if (element) element.classList.add('active');
+
+  renderSpareCards();
+}
+
+// Update Analytics Summary Widgets
 function updateAnalytics() {
   const total = sparePartsList.length;
   const available = sparePartsList.filter(i => i.status === 'Available').length;
@@ -128,6 +151,20 @@ function updateAnalytics() {
   if (document.getElementById('stat-available-spares')) document.getElementById('stat-available-spares').textContent = available;
   if (document.getElementById('stat-inuse-spares')) document.getElementById('stat-inuse-spares').textContent = inUse;
   if (document.getElementById('stat-defective-spares')) document.getElementById('stat-defective-spares').textContent = defective;
+}
+
+// Toggle Ink Color Input in Modal
+function toggleInkColorField() {
+  const typeSelect = document.getElementById('spare-type');
+  const colorGroup = document.getElementById('ink-color-group');
+  if (typeSelect && colorGroup) {
+    if (typeSelect.value.toLowerCase() === 'ink') {
+      colorGroup.style.display = 'block';
+    } else {
+      colorGroup.style.display = 'none';
+      document.getElementById('spare-color').value = '';
+    }
+  }
 }
 
 // Event Listeners Setup
@@ -143,11 +180,12 @@ function setupEventListeners() {
   }
 }
 
-// Add/Edit Part Functions
+// Add / Edit Modal Controls
 function openAddSpareModal() {
   document.getElementById('spare-modal-title').textContent = 'Add Spare Part';
   document.getElementById('spare-id').value = '';
   document.getElementById('add-spare-form').reset();
+  toggleInkColorField();
   openModal('spare-modal');
 }
 
@@ -158,52 +196,75 @@ function editSparePart(id) {
   document.getElementById('spare-modal-title').textContent = 'Edit Spare Part';
   document.getElementById('spare-id').value = item.id;
   document.getElementById('spare-type').value = item.type;
-  document.getElementById('spare-brand').value = item.brand;
-  document.getElementById('spare-model').value = item.model;
-  document.getElementById('spare-specs').value = item.specs;
-  document.getElementById('spare-serial').value = item.serial;
+  document.getElementById('spare-brand').value = item.brand || '';
+  document.getElementById('spare-model').value = item.model || '';
+  document.getElementById('spare-specs').value = item.specs || '';
+  document.getElementById('spare-serial').value = item.serial || '';
   document.getElementById('spare-status').value = item.status;
+  
+  toggleInkColorField();
+  if (document.getElementById('spare-color')) {
+    document.getElementById('spare-color').value = item.color || '';
+  }
 
   openModal('spare-modal');
 }
 
-function handleSaveSpare(e) {
+// Handle Add / Edit Submission to Database
+async function handleSaveSpare(e) {
   e.preventDefault();
 
   const id = document.getElementById('spare-id').value;
-  const spareData = {
-    id: id || Date.now().toString(),
-    type: document.getElementById('spare-type').value,
+  const payload = {
+    item_type: document.getElementById('spare-type').value,
     brand: document.getElementById('spare-brand').value,
     model: document.getElementById('spare-model').value,
     specs: document.getElementById('spare-specs').value,
-    serial: document.getElementById('spare-serial').value,
-    status: document.getElementById('spare-status').value
+    serial_number: document.getElementById('spare-serial').value,
+    status: document.getElementById('spare-status').value,
+    color: document.getElementById('spare-type').value.toLowerCase() === 'ink' ? document.getElementById('spare-color').value : ''
   };
 
-  if (id) {
-    const index = sparePartsList.findIndex(i => i.id === id);
-    if (index !== -1) sparePartsList[index] = spareData;
-  } else {
-    sparePartsList.push(spareData);
-  }
+  try {
+    const url = id ? `${SPARES_API_URL}/${id}` : SPARES_API_URL;
+    const method = id ? 'PUT' : 'POST';
 
-  saveToStorage();
-  renderSpareCards();
-  updateAnalytics();
-  closeModal('spare-modal');
+    const res = await fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      await loadSpareParts();
+      closeModal('spare-modal');
+    } else {
+      const err = await res.json();
+      alert(`Error saving spare part: ${err.error || 'Server error'}`);
+    }
+  } catch (err) {
+    console.error('Save Spare Error:', err);
+    alert('Failed to save spare item. Check server logs.');
+  }
 }
 
-function deleteSparePart(id) {
-  if (confirm('Are you sure you want to delete this spare part?')) {
-    sparePartsList = sparePartsList.filter(i => i.id !== id);
-    saveToStorage();
-    renderSpareCards();
-    updateAnalytics();
+// Delete Unit Function
+async function deleteSparePart(id) {
+  if (confirm('Are you sure you want to delete this spare part unit?')) {
+    try {
+      const res = await fetch(`${SPARES_API_URL}/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await loadSpareParts();
+      } else {
+        alert('Failed to delete item from server.');
+      }
+    } catch (err) {
+      console.error('Delete Spare Error:', err);
+    }
   }
 }
 
-// Modal Toggle Helpers
+// Helper Functions
 function openModal(modalId) {
   document.getElementById(modalId)?.classList.add('active');
 }
@@ -212,7 +273,6 @@ function closeModal(modalId) {
   document.getElementById(modalId)?.classList.remove('active');
 }
 
-// Escape HTML for XSS prevention
 function escapeHTML(str) {
   return String(str || '').replace(/[&<>"']/g, m => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
