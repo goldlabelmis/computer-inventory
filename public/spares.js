@@ -78,14 +78,11 @@ function renderSpareCards(dataToRender = getFilteredData()) {
     const isInk = (item.type || '').toLowerCase() === 'ink';
     const colorBadge = isInk && item.color ? `<span class="badge badge-info" style="background-color: #6c757d; margin-left: 5px;">${escapeHTML(item.color)}</span>` : '';
 
-    // Dynamic Columns: Bottle Quantity with - 0.5 Button vs Specs/Serial for Hardware
+    // Dynamic Columns: Bottle Quantity for Ink vs Specs/Serial for Hardware
     const detailColumns = isInk ? `
       <div class="meta-item">
         <label>BOTTLE QUANTITY</label>
-        <div class="quantity-control" style="display: flex; align-items: center; gap: 8px;">
-          <span>${item.quantity} Bottle(s)</span>
-          <button class="btn btn-sm btn-danger admin-only" style="padding: 2px 8px; font-size: 0.75rem; font-weight: bold;" onclick="consumeInk('${item.id}', ${item.quantity})" title="Deduct 0.5 bottle">- 0.5</button>
-        </div>
+        <span>${item.quantity} Bottle(s)</span>
       </div>
       <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
     ` : `
@@ -94,13 +91,19 @@ function renderSpareCards(dataToRender = getFilteredData()) {
       <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
     `;
 
+    // Only render the "- 0.5" button between Edit and Delete if the item is Ink
+    const deductButton = isInk ? `
+      <button class="btn btn-danger btn-sm" style="background-color: #ef476f; border: none; color: white; font-weight: bold;" onclick="consumeInk('${item.id}', ${item.quantity})" title="Deduct 0.5 bottle">- 0.5</button>
+    ` : '';
+
     card.innerHTML = `
       <div class="device-meta" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
         <div class="meta-item"><label>TYPE</label><span>${escapeHTML(item.type)} ${colorBadge}</span></div>
         <div class="meta-item"><label>BRAND & MODEL</label><span>${escapeHTML(item.brand)} ${escapeHTML(item.model)}</span></div>
         ${detailColumns}
-        <div class="card-actions admin-only" style="display: flex; gap: 8px;">
+        <div class="card-actions admin-only" style="display: flex; gap: 8px; align-items: center;">
           <button class="btn btn-warning btn-sm" style="background-color: #fca311; border: none; color: white;" onclick="editSparePart('${item.id}')">✏️ Edit</button>
+          ${deductButton}
           <button class="btn btn-danger btn-sm" style="background-color: #ef476f; border: none; color: white;" onclick="deleteSparePart('${item.id}')">Delete Unit</button>
         </div>
       </div>
