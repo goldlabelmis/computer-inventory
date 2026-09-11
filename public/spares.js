@@ -76,7 +76,26 @@ function renderSpareCards(dataToRender = getFilteredData()) {
     if (item.status === 'Defective') badgeClass = 'badge-defective';
 
     const isInk = (item.type || '').toLowerCase() === 'ink';
-    const colorBadge = isInk && item.color ? `<span class="badge badge-info" style="background-color: #6c757d; margin-left: 5px;">${escapeHTML(item.color)}</span>` : '';
+    
+    // Dynamic Ink Color Styling with Enhanced Contrast for Yellow
+    let inkBgColor = '#6c757d';
+    let textShadowStyle = '';
+    const inkColorLower = (item.color || '').toLowerCase();
+
+    if (inkColorLower === 'black') {
+      inkBgColor = '#212529';
+    } else if (inkColorLower === 'magenta') {
+      inkBgColor = '#e6007e';
+    } else if (inkColorLower === 'cyan') {
+      inkBgColor = '#00aeef';
+    } else if (inkColorLower === 'yellow') {
+      inkBgColor = '#d97706'; // Rich amber-yellow tone
+      textShadowStyle = 'text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);'; // Text outline shadow for visibility
+    }
+
+    const colorBadge = isInk && item.color 
+      ? `<span class="badge badge-info" style="background-color: ${inkBgColor}; color: #ffffff; font-weight: bold; margin-left: 5px; ${textShadowStyle}">${escapeHTML(item.color)}</span>` 
+      : '';
 
     // Dynamic Columns: Bottle Quantity for Ink vs Specs/Serial for Hardware
     const detailColumns = isInk ? `
