@@ -15,7 +15,7 @@
   --sidebar-active-bg: #e0f2fe;
   --table-header-bg: #f8fafc;
   --modal-overlay: rgba(0, 0, 0, 0.4);
-  --sidebar-width: 260px;
+  --sidebar-width: 250px;
   --sidebar-collapsed-width: 68px;
 }
 
@@ -41,7 +41,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100vh; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); transition: background-color 0.2s ease, color 0.2s ease; }
 
-.container-fluid { width: 100%; padding: 0 1.5rem; }
+.container-fluid { max-width: 1400px; margin: 0 auto; padding: 0 1.5rem; }
 .navbar { background: var(--card); border-bottom: 1px solid var(--border); padding: 0.8rem 0; height: 60px; }
 .nav-content { display: flex; justify-content: space-between; align-items: center; height: 100%; }
 .brand { display: flex; align-items: center; gap: 0.5rem; }
@@ -84,7 +84,8 @@ body:not(.is-admin) .admin-only {
 /* LAYOUT STRUCTURE */
 .app-layout { 
   display: flex; 
-  width: 100%; 
+  max-width: 1400px; 
+  margin: 0 auto; 
   height: calc(100vh - 60px); 
   overflow: hidden; 
 }
@@ -92,21 +93,18 @@ body:not(.is-admin) .admin-only {
 /* COLLAPSIBLE SIDEBAR */
 .sidebar {
   width: var(--sidebar-width);
-  min-width: var(--sidebar-width);
   background: var(--card);
   border-right: 1px solid var(--border);
   padding: 1.5rem 0.75rem;
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
 }
 
 .sidebar.collapsed {
   width: var(--sidebar-collapsed-width);
-  min-width: var(--sidebar-collapsed-width);
-  padding: 1.5rem 0.5rem;
 }
 
 .sidebar h3, .sidebar .sidebar-title {
@@ -158,7 +156,6 @@ body:not(.is-admin) .admin-only {
   padding: 1.5rem; 
   height: 100%;
   overflow-y: auto;
-  overflow-x: auto;
 }
 
 /* ANALYTICS DASHBOARD */
@@ -237,7 +234,7 @@ body:not(.is-admin) .admin-only {
 
 /* WORKSTATION CARD */
 .device-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
-.device-meta { display: grid; grid-template-columns: repeat(6, minmax(100px, 1fr)); gap: 1rem; margin-bottom: 1rem; align-items: center; }
+.device-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
 .meta-item label { display: block; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: bold; }
 .meta-item span { font-size: 0.9rem; font-weight: 600; color: var(--text); }
 

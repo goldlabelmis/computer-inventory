@@ -83,12 +83,8 @@ app.get('/api/auth/me', (req, res) => res.json({ user: req.session.user || null 
 
 app.post('/api/auth/login', (req, res) => {
   const { username, password } = req.body;
-  
-  const envUser = process.env.ADMIN_USER || 'GLMis';
-  const envPass = process.env.ADMIN_PASS || 'GLDOREEN2026';
-
-  if (username === envUser && password === envPass) {
-    req.session.user = { username: envUser, role: 'administrator' };
+  if (username === 'GLMis' && password === 'GLDOREEN2026') {
+    req.session.user = { username: 'GLMis', role: 'administrator' };
     return res.json({ success: true, user: req.session.user });
   }
   res.status(401).json({ error: 'Invalid credentials' });
@@ -190,6 +186,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       if (part.specs) lines.push(`SPECS: ${part.specs.trim()}`);
       if (part.serial_number) lines.push(`SN: ${part.serial_number.trim()}`);
 
+      // Fallback in case brand/model are saved together without explicit fields
       if (lines.length === 0) {
         const fallback = `${part.brand || ''} ${part.model || ''}`.trim();
         if (fallback) lines.push(fallback);
@@ -248,6 +245,7 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         cell.font = { name: 'Calibri', size: 7.5 };
         
+        // Align System components to the left; keep all other fields centered
         const isLeftAligned = colNumber === 8;
         cell.alignment = { 
           vertical: 'middle', 
@@ -283,133 +281,88 @@ app.get('/api/export/excel', requireAdmin, async (req, res) => {
 
 /* --- INVENTORY / COMPUTERS ROUTES --- */
 app.get('/api/inventory', async (req, res) => {
-  try {
-    const data = await Computer.find();
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const data = await Computer.find();
+  res.json(data);
 });
 
 app.post('/api/computers', requireAdmin, async (req, res) => {
-  try {
-    const comp = new Computer(req.body);
-    await comp.save();
-    res.status(201).json(comp);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  const comp = new Computer(req.body);
+  await comp.save();
+  res.status(201).json(comp);
 });
 
 app.put('/api/computers/:id', requireAdmin, async (req, res) => {
-  try {
-    const comp = await Computer.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!comp) return res.status(404).json({ error: 'Computer not found' });
-    res.json(comp);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  const comp = await Computer.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  res.json(comp);
 });
 
 app.delete('/api/computers/:id', requireAdmin, async (req, res) => {
-  try {
-    await Computer.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  await Computer.findByIdAndDelete(req.params.id);
+  res.json({ success: true });
 });
 
 /* --- PARTS / COMPONENTS ROUTES --- */
 app.post('/api/components', requireAdmin, async (req, res) => {
-  try {
-    const { computer_id, ...partData } = req.body;
-    const comp = await Computer.findById(computer_id);
-    if (!comp) return res.status(404).json({ error: 'Computer not found' });
+  const { computer_id, ...partData } = req.body;
+  const comp = await Computer.findById(computer_id);
+  if (!comp) return res.status(404).json({ error: 'Computer not found' });
 
-    comp.parts.push(partData);
-    await comp.save();
-    res.status(201).json(comp);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  comp.parts.push(partData);
+  await comp.save();
+  res.status(201).json(comp);
 });
 
 app.put('/api/components/:id', requireAdmin, async (req, res) => {
-  try {
-    const comp = await Computer.findOne({ 'parts._id': req.params.id });
-    if (!comp) return res.status(404).json({ error: 'Part not found' });
+  const comp = await Computer.findOne({ 'parts._id': req.params.id });
+  if (!comp) return res.status(404).json({ error: 'Part not found' });
 
-    const part = comp.parts.id(req.params.id);
-    Object.assign(part, req.body);
-    await comp.save();
-    res.json(part);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  const part = comp.parts.id(req.params.id);
+  Object.assign(part, req.body);
+  await comp.save();
+  res.json(part);
 });
 
 app.delete('/api/components/:id', requireAdmin, async (req, res) => {
-  try {
-    await Computer.updateOne(
-      { 'parts._id': req.params.id },
-      { $pull: { parts: { _id: req.params.id } } }
-    );
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  await Computer.updateOne(
+    { 'parts._id': req.params.id },
+    { $pull: { parts: { _id: req.params.id } } }
+  );
+  res.json({ success: true });
 });
 
 /* --- REPAIR LOGS ROUTES --- */
 app.post('/api/repair-logs', requireAdmin, async (req, res) => {
-  try {
-    const { computer_id, ...logData } = req.body;
-    const comp = await Computer.findById(computer_id);
-    if (!comp) return res.status(404).json({ error: 'Computer not found' });
+  const { computer_id, ...logData } = req.body;
+  const comp = await Computer.findById(computer_id);
+  if (!comp) return res.status(404).json({ error: 'Computer not found' });
 
-    comp.history.push(logData);
-    await comp.save();
-    res.status(201).json(comp);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  comp.history.push(logData);
+  await comp.save();
+  res.status(201).json(comp);
 });
 
 app.put('/api/repair-logs/:id', requireAdmin, async (req, res) => {
-  try {
-    const comp = await Computer.findOne({ 'history._id': req.params.id });
-    if (!comp) return res.status(404).json({ error: 'Repair log not found' });
+  const comp = await Computer.findOne({ 'history._id': req.params.id });
+  if (!comp) return res.status(404).json({ error: 'Repair log not found' });
 
-    const log = comp.history.id(req.params.id);
-    Object.assign(log, req.body);
-    await comp.save();
-    res.json(log);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  const log = comp.history.id(req.params.id);
+  Object.assign(log, req.body);
+  await comp.save();
+  res.json(log);
 });
 
 app.delete('/api/repair-logs/:id', requireAdmin, async (req, res) => {
-  try {
-    await Computer.updateOne(
-      { 'history._id': req.params.id },
-      { $pull: { history: { _id: req.params.id } } }
-    );
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  await Computer.updateOne(
+    { 'history._id': req.params.id },
+    { $pull: { history: { _id: req.params.id } } }
+  );
+  res.json({ success: true });
 });
 
 /* --- TECHNICIANS ROUTES --- */
 app.get('/api/technicians', async (req, res) => {
-  try {
-    const techs = await Technician.find();
-    res.json(techs);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const techs = await Technician.find();
+  res.json(techs);
 });
 
 app.post('/api/technicians', requireAdmin, async (req, res) => {
@@ -423,12 +376,8 @@ app.post('/api/technicians', requireAdmin, async (req, res) => {
 });
 
 app.delete('/api/technicians/:id', requireAdmin, async (req, res) => {
-  try {
-    await Technician.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  await Technician.findByIdAndDelete(req.params.id);
+  res.json({ success: true });
 });
 
 // Wildcard route pointing directly to public/index.html
