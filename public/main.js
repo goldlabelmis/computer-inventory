@@ -48,6 +48,24 @@ function isAdmin() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // DISABLE AUTOCOMPLETE & PREVENT PASSWORD AUTOFILL SITE-WIDE
+  const applyAutofillProtections = () => {
+    document.querySelectorAll('input').forEach(input => {
+      input.setAttribute('autocomplete', 'off');
+      if (input.type === 'password') {
+        input.setAttribute('autocomplete', 'new-password');
+      }
+    });
+  };
+
+  applyAutofillProtections();
+
+  // Watch for dynamically rendered inputs (modals, forms)
+  const observer = new MutationObserver(() => {
+    applyAutofillProtections();
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
   checkAuth();
   loadInventory();
   loadTechnicians();
