@@ -163,13 +163,13 @@
           </select>
         </div>
 
-        <!-- CONDITIONAL INK BOTTLE QUANTITY FIELD (UPDATED MIN & STEP FOR DECIMAL VALUES) -->
+        <!-- CONDITIONAL INK BOTTLE QUANTITY FIELD -->
         <div class="form-group" id="ink-quantity-group" style="display: none;">
           <label>Number of Bottles</label>
           <input type="number" id="spare-quantity" min="0" step="0.5" value="1" placeholder="e.g. 4.5">
         </div>
 
-        <!-- STANDARD HARDWARE FIELDS (HIDDEN WHEN INK IS SELECTED) -->
+        <!-- STANDARD HARDWARE FIELDS -->
         <div id="standard-fields-group">
           <div class="form-group">
             <label>Serial Number</label>
@@ -185,6 +185,24 @@
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="closeModal('spare-modal')">Cancel</button>
           <button type="submit" class="btn btn-primary">Save Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: REFILL INK LOG -->
+  <div id="refill-modal" class="modal">
+    <div class="modal-card">
+      <h3>Log Ink Refill</h3>
+      <form id="refill-ink-form">
+        <input type="hidden" id="refill-spare-id">
+        <div class="form-group" style="margin-top: 1rem;">
+          <label>Computer / Printer Where Connected</label>
+          <input type="text" id="refill-workstation" placeholder="e.g. Workstation 3 / Front Desk Printer" required>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('refill-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save & Deduct 0.5</button>
         </div>
       </form>
     </div>

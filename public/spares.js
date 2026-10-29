@@ -28,7 +28,8 @@ async function loadSpareParts() {
         serial: item.serial_number || item.serial,
         color: item.color || '',
         quantity: item.quantity !== undefined ? item.quantity : 1,
-        status: item.status || 'Available'
+        status: item.status || 'Available',
+        refillHistory: item.refillHistory || []
       }));
     } else {
       console.warn('Backend API unavailable. Falling back to local state.');
@@ -110,9 +111,9 @@ function renderSpareCards(dataToRender = getFilteredData()) {
       <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
     `;
 
-    // Only render the "- 0.5" button between Edit and Delete if the item is Ink
+    // Only render the "- 0.5" button between Edit and Delete if the item is Ink (triggers custom modal)
     const deductButton = isInk ? `
-      <button class="btn btn-danger btn-sm" style="background-color: #ef476f; border: none; color: white; font-weight: bold;" onclick="consumeInk('${item.id}', ${item.quantity})" title="Deduct 0.5 bottle">- 0.5</button>
+      <button class="btn btn-danger btn-sm" style="background-color: #ef476f; border: none; color: white; font-weight: bold;" onclick="openRefillModal('${item.id}', ${item.quantity})" title="Deduct 0.5 bottle">- 0.5</button>
     ` : '';
 
     card.innerHTML = `
@@ -130,24 +131,49 @@ function renderSpareCards(dataToRender = getFilteredData()) {
 
     container.appendChild(card);
   });
+
+  // If viewing a specific ink color subcategory, append the Refill History Table at the bottom
+  if (currentColorFilter) {
+    const historyWrapper = document.createElement('div');
+    historyWrapper.innerHTML = renderRefillHistorySection();
+    container.appendChild(historyWrapper);
+  }
 }
 
-// Deduct 0.5 bottle of ink quick action (Includes detailed backend error messaging)
-async function consumeInk(id, currentQty) {
+// Open Custom Refill Modal
+function openRefillModal(id, currentQty) {
+  document.getElementById('refill-spare-id').value = id;
+  document.getElementById('refill-workstation').value = '';
+  openModal('refill-modal');
+}
+
+// Handle Refill Form Submission & History Logging
+async function handleRefillSubmit(e) {
+  e.preventDefault();
+
+  const id = document.getElementById('refill-spare-id').value;
+  const workstation = document.getElementById('refill-workstation').value.trim();
   const targetItem = sparePartsList.find(i => i.id === id);
   if (!targetItem) return;
 
-  // Rounding prevents JS floating-point arithmetic errors (e.g. 1.0 - 0.5 = 0.4999999)
-  const rawQty = Math.max(0, currentQty - 0.5);
+  const rawQty = Math.max(0, targetItem.quantity - 0.5);
   const newQty = parseFloat(rawQty.toFixed(2));
 
-  // Preserves all original properties so the server doesn't reject missing fields
+  const newLog = {
+    workstation: workstation,
+    amount: 0.5,
+    date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  };
+
+  const existingHistory = targetItem.refillHistory || [];
+
   const payload = {
     ...targetItem,
     item_type: targetItem.type,
     serial_number: targetItem.serial || '',
     quantity: newQty,
-    status: newQty === 0 ? 'Defective' : targetItem.status
+    status: newQty === 0 ? 'Defective' : targetItem.status,
+    refillHistory: [newLog, ...existingHistory]
   };
 
   try {
@@ -158,9 +184,9 @@ async function consumeInk(id, currentQty) {
     });
 
     if (res.ok) {
+      closeModal('refill-modal');
       await loadSpareParts();
     } else {
-      // Displays the exact error returned by server.js
       const errData = await res.json().catch(() => ({}));
       alert(`Failed to update ink level: ${errData.error || res.statusText || 'Server error'}`);
     }
@@ -168,6 +194,61 @@ async function consumeInk(id, currentQty) {
     console.error('Consume Ink Error:', err);
     alert('Network error while updating ink level.');
   }
+}
+
+// Render Refill History Table for Active Ink Color
+function renderRefillHistorySection() {
+  const filteredInkItems = sparePartsList.filter(i => 
+    (i.type || '').toLowerCase() === 'ink' && 
+    (i.color || '').toLowerCase() === currentColorFilter.toLowerCase()
+  );
+
+  let allLogs = [];
+  filteredInkItems.forEach(item => {
+    if (item.refillHistory && Array.isArray(item.refillHistory)) {
+      item.refillHistory.forEach(log => {
+        allLogs.push({ ...log, brandModel: `${item.brand} ${item.model}` });
+      });
+    }
+  });
+
+  if (allLogs.length === 0) {
+    return `
+      <div class="device-card" style="margin-top: 1.5rem; background: var(--card);">
+        <p style="color: var(--text-muted, #6c757d); text-align: center; margin: 0;">No refill history recorded for ${currentColorFilter} ink yet.</p>
+      </div>
+    `;
+  }
+
+  let rows = allLogs.map(log => `
+    <tr>
+      <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${escapeHTML(log.date)}</td>
+      <td style="padding: 0.75rem; border-bottom: 1px solid var(--border); font-weight: 600;">${escapeHTML(log.workstation)}</td>
+      <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${escapeHTML(log.brandModel)}</td>
+      <td style="padding: 0.75rem; border-bottom: 1px solid var(--border); color: var(--danger, #ef476f); font-weight: bold;">-${log.amount} Bottle</td>
+    </tr>
+  `).join('');
+
+  return `
+    <div class="device-card" style="margin-top: 1.5rem;">
+      <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--text);">📋 Refill History — ${currentColorFilter} Ink</h3>
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.88rem;">
+          <thead>
+            <tr style="background: var(--table-header-bg, #f8fafc); color: var(--text-muted, #6c757d);">
+              <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Date & Time</th>
+              <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Workstation / Printer Refilled</th>
+              <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Ink Brand & Model</th>
+              <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Deduction</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 // Get Filtered Data
@@ -320,6 +401,11 @@ function setupEventListeners() {
   const form = document.getElementById('add-spare-form');
   if (form) {
     form.addEventListener('submit', handleSaveSpare);
+  }
+
+  const refillForm = document.getElementById('refill-ink-form');
+  if (refillForm) {
+    refillForm.addEventListener('submit', handleRefillSubmit);
   }
 }
 
