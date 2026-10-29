@@ -5,6 +5,7 @@ const AUTH_KEY = 'is_admin_logged_in';
 let sparePartsList = [];
 let currentCategory = 'ALL';
 let currentColorFilter = null;
+let isRefillHistoryVisible = false; // Toggle state for refill history view
 
 // Initialize Page Data
 document.addEventListener('DOMContentLoaded', () => {
@@ -132,12 +133,18 @@ function renderSpareCards(dataToRender = getFilteredData()) {
     container.appendChild(card);
   });
 
-  // If viewing a specific ink color subcategory, append the Refill History Table at the bottom
+  // If viewing a specific ink color subcategory, append the Refill History Section with a Toggle Button
   if (currentColorFilter) {
     const historyWrapper = document.createElement('div');
     historyWrapper.innerHTML = renderRefillHistorySection();
     container.appendChild(historyWrapper);
   }
+}
+
+// Toggle visibility of the refill history section
+function toggleRefillHistoryVisibility() {
+  isRefillHistoryVisible = !isRefillHistoryVisible;
+  renderSpareCards();
 }
 
 // Open Custom Refill Modal
@@ -196,8 +203,19 @@ async function handleRefillSubmit(e) {
   }
 }
 
-// Render Refill History Table for Active Ink Color
+// Render Refill History Table for Active Ink Color with Toggle Support
 function renderRefillHistorySection() {
+  const buttonText = isRefillHistoryVisible ? '👁️‍🗨️ Hide History' : '👁️ See History';
+
+  if (!isRefillHistoryVisible) {
+    return `
+      <div class="device-card" style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 1rem; margin: 0; color: var(--text);">📋 Refill History — ${currentColorFilter} Ink</h3>
+        <button class="btn btn-secondary btn-sm" onclick="toggleRefillHistoryVisibility()">${buttonText}</button>
+      </div>
+    `;
+  }
+
   const filteredInkItems = sparePartsList.filter(i => 
     (i.type || '').toLowerCase() === 'ink' && 
     (i.color || '').toLowerCase() === currentColorFilter.toLowerCase()
@@ -215,6 +233,10 @@ function renderRefillHistorySection() {
   if (allLogs.length === 0) {
     return `
       <div class="device-card" style="margin-top: 1.5rem; background: var(--card);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3 style="font-size: 1rem; margin: 0; color: var(--text);">📋 Refill History — ${currentColorFilter} Ink</h3>
+          <button class="btn btn-secondary btn-sm" onclick="toggleRefillHistoryVisibility()">${buttonText}</button>
+        </div>
         <p style="color: var(--text-muted, #6c757d); text-align: center; margin: 0;">No refill history recorded for ${currentColorFilter} ink yet.</p>
       </div>
     `;
@@ -231,7 +253,10 @@ function renderRefillHistorySection() {
 
   return `
     <div class="device-card" style="margin-top: 1.5rem;">
-      <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--text);">📋 Refill History — ${currentColorFilter} Ink</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h3 style="font-size: 1rem; margin: 0; color: var(--text);">📋 Refill History — ${currentColorFilter} Ink</h3>
+        <button class="btn btn-secondary btn-sm" onclick="toggleRefillHistoryVisibility()">${buttonText}</button>
+      </div>
       <div style="overflow-x: auto;">
         <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.88rem;">
           <thead>
@@ -274,6 +299,7 @@ function getFilteredData() {
 function filterSpareCategory(category, element) {
   currentCategory = category;
   currentColorFilter = null;
+  isRefillHistoryVisible = false; // Reset toggle on category change
   
   document.querySelectorAll('#spare-category-sidebar li').forEach(li => li.classList.remove('active'));
   if (element) element.classList.add('active');
@@ -286,6 +312,7 @@ function filterSpareCategory(category, element) {
 function filterInkColor(color, element) {
   currentCategory = 'Ink';
   currentColorFilter = color;
+  isRefillHistoryVisible = false; // Reset toggle when switching ink colors
 
   document.querySelectorAll('#spare-category-sidebar li').forEach(li => li.classList.remove('active'));
   if (element) element.classList.add('active');
