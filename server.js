@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 app.set('trust proxy', 1);
 
 // 1. Connect to MongoDB Atlas
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://<username>:<password>@cluster.mongodb.net/computer_inventory?retryWrites=true&w=majority';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://goldlabelmis_db_user:YOUR_ACTUAL_PASSWORD@cluster0.di3lhnm.mongodb.net/computer_inventory?retryWrites=true&w=majority';
 
 mongoose.connect(MONGO_URI)
   .then(() => console.log('🍃 Connected to MongoDB Atlas'))
