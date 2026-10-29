@@ -49,7 +49,14 @@ const TechnicianSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true }
 });
 
-// Updated Spare Part Schema with Color Field & Floating-Point Quantity tracking
+// Refill History Sub-Schema Entry Definition
+const RefillHistorySchema = new mongoose.Schema({
+  workstation: String,
+  amount: Number,
+  date: String
+});
+
+// Updated Spare Part Schema with Color Field, Floating-Point Quantity tracking & Refill Logs History
 const SparePartSchema = new mongoose.Schema({
   item_type: { type: String, required: true },
   brand: String,
@@ -59,6 +66,7 @@ const SparePartSchema = new mongoose.Schema({
   color: { type: String, default: '' }, // For Ink colors (Black, Magenta, Cyan, Yellow)
   quantity: { type: Number, default: 1, min: 0 }, // Supports decimals (e.g., 0.5, 4.5) with a 0 floor guardrail
   status: { type: String, enum: ['Available', 'In Use', 'Defective'], default: 'Available' },
+  refillHistory: [RefillHistorySchema], // Tracks workstation refill logs
   date_added: { type: Date, default: Date.now }
 });
 
