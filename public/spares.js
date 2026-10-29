@@ -133,7 +133,7 @@ function renderSpareCards(dataToRender = getFilteredData()) {
     container.appendChild(card);
   });
 
-  // If viewing a specific ink color subcategory, append the Refill History Section with a Toggle Button
+  // If viewing a specific ink color subcategory, append the Refill History Section with Toggle & Delete All Buttons
   if (currentColorFilter) {
     const historyWrapper = document.createElement('div');
     historyWrapper.innerHTML = renderRefillHistorySection();
@@ -238,15 +238,52 @@ async function deleteRefillLog(spareId, logId) {
   }
 }
 
-// Render Refill History Table for Active Ink Color with Toggle Support and Delete Buttons
+// Delete All Refill Logs for the Active Ink Color
+async function deleteAllRefillLogs() {
+  if (!confirm(`Are you sure you want to delete all refill history logs for ${currentColorFilter} ink?`)) return;
+
+  const filteredInkItems = sparePartsList.filter(i => 
+    (i.type || '').toLowerCase() === 'ink' && 
+    (i.color || '').toLowerCase() === currentColorFilter.toLowerCase()
+  );
+
+  try {
+    for (const item of filteredInkItems) {
+      const payload = {
+        ...item,
+        item_type: item.type,
+        serial_number: item.serial || '',
+        refillHistory: []
+      };
+
+      await fetch(`${SPARES_API_URL}/${item.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    await loadSpareParts();
+  } catch (err) {
+    console.error('Delete All Refill Logs Error:', err);
+    alert('Failed to clear refill history logs.');
+  }
+}
+
+// Render Refill History Table for Active Ink Color with Toggle Support, Delete All, and Delete Buttons
 function renderRefillHistorySection() {
   const buttonText = isRefillHistoryVisible ? '👁️‍🗨️ Hide History' : '👁️ See History';
+  const deleteAllButton = `<button class="btn btn-danger btn-sm" style="padding: 0.25rem 0.6rem; font-size: 0.8rem; background-color: #ef476f; border: none; color: white;" onclick="deleteAllRefillLogs()">🗑️ Delete All</button>`;
+  const toggleButton = `<button class="btn btn-secondary btn-sm" onclick="toggleRefillHistoryVisibility()">${buttonText}</button>`;
 
   if (!isRefillHistoryVisible) {
     return `
       <div class="device-card" style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
         <h3 style="font-size: 1rem; margin: 0; color: var(--text);">📋 Refill History — ${currentColorFilter} Ink</h3>
-        <button class="btn btn-secondary btn-sm" onclick="toggleRefillHistoryVisibility()">${buttonText}</button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          ${deleteAllButton}
+          ${toggleButton}
+        </div>
       </div>
     `;
   }
@@ -274,7 +311,10 @@ function renderRefillHistorySection() {
       <div class="device-card" style="margin-top: 1.5rem; background: var(--card);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
           <h3 style="font-size: 1rem; margin: 0; color: var(--text);">📋 Refill History — ${currentColorFilter} Ink</h3>
-          <button class="btn btn-secondary btn-sm" onclick="toggleRefillHistoryVisibility()">${buttonText}</button>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            ${deleteAllButton}
+            ${toggleButton}
+          </div>
         </div>
         <p style="color: var(--text-muted, #6c757d); text-align: center; margin: 0;">No refill history recorded for ${currentColorFilter} ink yet.</p>
       </div>
@@ -297,7 +337,10 @@ function renderRefillHistorySection() {
     <div class="device-card" style="margin-top: 1.5rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h3 style="font-size: 1rem; margin: 0; color: var(--text);">📋 Refill History — ${currentColorFilter} Ink</h3>
-        <button class="btn btn-secondary btn-sm" onclick="toggleRefillHistoryVisibility()">${buttonText}</button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          ${deleteAllButton}
+          ${toggleButton}
+        </div>
       </div>
       <div style="overflow-x: auto;">
         <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.88rem;">
