@@ -203,7 +203,42 @@ async function handleRefillSubmit(e) {
   }
 }
 
-// Render Refill History Table for Active Ink Color with Toggle Support
+// Delete a specific refill log entry
+async function deleteRefillLog(spareId, logId) {
+  if (!confirm('Are you sure you want to delete this refill history log?')) return;
+
+  const targetItem = sparePartsList.find(i => i.id === spareId);
+  if (!targetItem) return;
+
+  const updatedHistory = (targetItem.refillHistory || []).filter(log => log._id !== logId);
+
+  const payload = {
+    ...targetItem,
+    item_type: targetItem.type,
+    serial_number: targetItem.serial || '',
+    refillHistory: updatedHistory
+  };
+
+  try {
+    const res = await fetch(`${SPARES_API_URL}/${spareId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      await loadSpareParts();
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      alert(`Failed to delete history log: ${errData.error || 'Server error'}`);
+    }
+  } catch (err) {
+    console.error('Delete Refill Log Error:', err);
+    alert('Network error while deleting history log.');
+  }
+}
+
+// Render Refill History Table for Active Ink Color with Toggle Support and Delete Buttons
 function renderRefillHistorySection() {
   const buttonText = isRefillHistoryVisible ? '👁️‍🗨️ Hide History' : '👁️ See History';
 
@@ -225,7 +260,11 @@ function renderRefillHistorySection() {
   filteredInkItems.forEach(item => {
     if (item.refillHistory && Array.isArray(item.refillHistory)) {
       item.refillHistory.forEach(log => {
-        allLogs.push({ ...log, brandModel: `${item.brand} ${item.model}` });
+        allLogs.push({ 
+          ...log, 
+          spareId: item.id, 
+          brandModel: `${item.brand} ${item.model}` 
+        });
       });
     }
   });
@@ -248,6 +287,9 @@ function renderRefillHistorySection() {
       <td style="padding: 0.75rem; border-bottom: 1px solid var(--border); font-weight: 600;">${escapeHTML(log.workstation)}</td>
       <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${escapeHTML(log.brandModel)}</td>
       <td style="padding: 0.75rem; border-bottom: 1px solid var(--border); color: var(--danger, #ef476f); font-weight: bold;">-${log.amount} Bottle</td>
+      <td style="padding: 0.75rem; border-bottom: 1px solid var(--border); text-align: right;">
+        <button class="btn btn-danger btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="deleteRefillLog('${log.spareId}', '${log._id}')">🗑️ Delete</button>
+      </td>
     </tr>
   `).join('');
 
@@ -265,6 +307,7 @@ function renderRefillHistorySection() {
               <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Workstation / Printer Refilled</th>
               <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Ink Brand & Model</th>
               <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Deduction</th>
+              <th style="padding: 0.75rem; border-bottom: 2px solid var(--border); text-align: right;">Action</th>
             </tr>
           </thead>
           <tbody>
