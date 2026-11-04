@@ -77,7 +77,9 @@ function renderSpareCards(dataToRender = getFilteredData()) {
     if (item.status === 'In Use') badgeClass = 'badge-inuse';
     if (item.status === 'Defective') badgeClass = 'badge-defective';
 
-    const isInk = (item.type || '').toLowerCase() === 'ink';
+    const itemTypeLower = (item.type || '').toLowerCase();
+    const isInk = itemTypeLower === 'ink';
+    const hasQuantity = isInk || ['ram', 'storage'].includes(itemTypeLower);
     
     // Dynamic Ink Color Styling with Enhanced Contrast for Yellow
     let inkBgColor = '#6c757d';
@@ -99,20 +101,32 @@ function renderSpareCards(dataToRender = getFilteredData()) {
       ? `<span class="badge badge-info" style="background-color: ${inkBgColor}; color: #ffffff; font-weight: bold; margin-left: 5px; ${textShadowStyle}">${escapeHTML(item.color)}</span>` 
       : '';
 
-    // Dynamic Columns: Bottle Quantity for Ink vs Specs/Serial for Hardware
-    const detailColumns = isInk ? `
-      <div class="meta-item">
-        <label>BOTTLE QUANTITY</label>
-        <span>${item.quantity} Bottle(s)</span>
-      </div>
-      <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
-    ` : `
-      <div class="meta-item"><label>SPECIFICATIONS</label><span>${escapeHTML(item.specs || 'N/A')}</span></div>
-      <div class="meta-item"><label>SERIAL NUMBER</label><span>${escapeHTML(item.serial || 'N/A')}</span></div>
-      <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
-    `;
+    // Dynamic Columns: Quantity for Ink, RAM, and Storage vs Specs/Serial for others
+    let detailColumns = '';
+    if (isInk) {
+      detailColumns = `
+        <div class="meta-item">
+          <label>BOTTLE QUANTITY</label>
+          <span>${item.quantity} Bottle(s)</span>
+        </div>
+        <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
+      `;
+    } else if (hasQuantity) {
+      detailColumns = `
+        <div class="meta-item"><label>QUANTITY</label><span>${item.quantity} Unit(s)</span></div>
+        <div class="meta-item"><label>SPECIFICATIONS</label><span>${escapeHTML(item.specs || 'N/A')}</span></div>
+        <div class="meta-item"><label>SERIAL NUMBER</label><span>${escapeHTML(item.serial || 'N/A')}</span></div>
+        <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
+      `;
+    } else {
+      detailColumns = `
+        <div class="meta-item"><label>SPECIFICATIONS</label><span>${escapeHTML(item.specs || 'N/A')}</span></div>
+        <div class="meta-item"><label>SERIAL NUMBER</label><span>${escapeHTML(item.serial || 'N/A')}</span></div>
+        <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
+      `;
+    }
 
-    // Only render the "- 0.5" button between Edit and Delete if the item is Ink (triggers custom modal)
+    // Only render the "- 0.5" button if the item is Ink
     const deductButton = isInk ? `
       <button class="btn btn-danger btn-sm" style="background-color: #ef476f; border: none; color: white; font-weight: bold;" onclick="openRefillModal('${item.id}', ${item.quantity})" title="Deduct 0.5 bottle">- 0.5</button>
     ` : '';
@@ -480,17 +494,31 @@ function updateAnalytics() {
   }
 }
 
-// Toggle Fields: Shows Quantity & Ink Color for Ink, Serial & Specs for Hardware
+// Toggle Fields: Shows Quantity for Ink, RAM, and Storage
 function toggleFormFieldsForType() {
   const typeSelect = document.getElementById('spare-type');
   const colorGroup = document.getElementById('ink-color-group');
-  const quantityGroup = document.getElementById('ink-quantity-group');
+  const quantityGroup = document.getElementById('spare-quantity-group');
+  const quantityLabel = document.getElementById('quantity-label');
   const standardFields = document.getElementById('standard-fields-group');
 
-  if (typeSelect && typeSelect.value.toLowerCase() === 'ink') {
+  const selectedType = (typeSelect?.value || '').toLowerCase();
+
+  if (selectedType === 'ink') {
     if (colorGroup) colorGroup.style.display = 'block';
     if (quantityGroup) quantityGroup.style.display = 'block';
+    if (quantityLabel) quantityLabel.textContent = 'Number of Bottles';
+    document.getElementById('spare-quantity').step = '0.5';
     if (standardFields) standardFields.style.display = 'none';
+  } else if (selectedType === 'ram' || selectedType === 'storage') {
+    if (colorGroup) {
+      colorGroup.style.display = 'none';
+      document.getElementById('spare-color').value = '';
+    }
+    if (quantityGroup) quantityGroup.style.display = 'block';
+    if (quantityLabel) quantityLabel.textContent = 'Quantity (Units)';
+    document.getElementById('spare-quantity').step = '1';
+    if (standardFields) standardFields.style.display = 'block';
   } else {
     if (colorGroup) {
       colorGroup.style.display = 'none';
@@ -545,9 +573,14 @@ function editSparePart(id) {
   
   toggleFormFieldsForType();
 
-  if (item.type.toLowerCase() === 'ink') {
+  const itemTypeLower = (item.type || '').toLowerCase();
+  if (itemTypeLower === 'ink') {
     if (document.getElementById('spare-color')) document.getElementById('spare-color').value = item.color || '';
     if (document.getElementById('spare-quantity')) document.getElementById('spare-quantity').value = item.quantity !== undefined ? item.quantity : 1;
+  } else if (['ram', 'storage'].includes(itemTypeLower)) {
+    if (document.getElementById('spare-quantity')) document.getElementById('spare-quantity').value = item.quantity !== undefined ? item.quantity : 1;
+    if (document.getElementById('spare-specs')) document.getElementById('spare-specs').value = item.specs || '';
+    if (document.getElementById('spare-serial')) document.getElementById('spare-serial').value = item.serial || '';
   } else {
     if (document.getElementById('spare-specs')) document.getElementById('spare-specs').value = item.specs || '';
     if (document.getElementById('spare-serial')) document.getElementById('spare-serial').value = item.serial || '';
@@ -561,17 +594,20 @@ async function handleSaveSpare(e) {
   e.preventDefault();
 
   const id = document.getElementById('spare-id').value;
-  const isInk = document.getElementById('spare-type').value.toLowerCase() === 'ink';
+  const typeVal = document.getElementById('spare-type').value;
+  const typeValLower = typeVal.toLowerCase();
+  const isInk = typeValLower === 'ink';
+  const isHardwareWithQty = ['ram', 'storage'].includes(typeValLower);
 
   const payload = {
-    item_type: document.getElementById('spare-type').value,
+    item_type: typeVal,
     brand: document.getElementById('spare-brand').value,
     model: document.getElementById('spare-model').value,
     status: document.getElementById('spare-status').value,
     color: isInk ? document.getElementById('spare-color').value : '',
-    quantity: isInk ? parseFloat(document.getElementById('spare-quantity').value) || 1 : 1,
-    specs: isInk ? '' : document.getElementById('spare-specs').value,
-    serial_number: isInk ? '' : document.getElementById('spare-serial').value
+    quantity: (isInk || isHardwareWithQty) ? parseFloat(document.getElementById('spare-quantity').value) || 1 : 1,
+    specs: document.getElementById('spare-specs').value,
+    serial_number: document.getElementById('spare-serial').value
   };
 
   try {
