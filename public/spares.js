@@ -1,6 +1,8 @@
 // Local Storage Backup & API Endpoint Configuration
 const SPARES_API_URL = '/api/spares';
 const AUTH_KEY = 'is_admin_logged_in';
+const DEFAULT_PERIPHERALS = ['Power Cord', 'SATA Cable', 'Printer Cord'];
+const CUSTOM_PERIPHERALS_KEY = 'custom_peripheral_types';
 
 let sparePartsList = [];
 let currentCategory = 'ALL';
@@ -53,6 +55,118 @@ function checkAdminAuth() {
   const userInfo = document.getElementById('user-info');
   if (userInfo) {
     userInfo.innerHTML = '';
+  }
+}
+
+// Custom Peripheral Storage Helpers
+function getCustomPeripherals() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CUSTOM_PERIPHERALS_KEY) || '[]');
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomPeripherals(list) {
+  localStorage.setItem(CUSTOM_PERIPHERALS_KEY, JSON.stringify(list));
+}
+
+function refreshPeripheralSelectOptions(selectedValue = '') {
+  const select = document.getElementById('peripheral-select');
+  if (!select) return;
+
+  const customList = getCustomPeripherals();
+  const allOptions = [...DEFAULT_PERIPHERALS];
+
+  customList.forEach(name => {
+    if (!allOptions.some(opt => opt.toLowerCase() === name.toLowerCase())) {
+      allOptions.push(name);
+    }
+  });
+
+  if (selectedValue && !allOptions.some(opt => opt.toLowerCase() === selectedValue.toLowerCase())) {
+    allOptions.push(selectedValue);
+  }
+
+  select.innerHTML = `<option value="">Select Peripheral...</option>` +
+    allOptions.map(opt => `<option value="${escapeHTML(opt)}">${escapeHTML(opt)}</option>`).join('');
+
+  if (selectedValue) {
+    select.value = selectedValue;
+  }
+}
+
+function toggleCustomPeripheralInput(forceState = null) {
+  const customRow = document.getElementById('custom-peripheral-row');
+  const customInput = document.getElementById('peripheral-custom-input');
+  if (!customRow || !customInput) return;
+
+  isCustomPeripheralMode = forceState !== null ? forceState : !isCustomPeripheralMode;
+
+  if (isCustomPeripheralMode) {
+    customRow.style.display = 'flex';
+    customInput.focus();
+  } else {
+    customRow.style.display = 'none';
+    customInput.value = '';
+  }
+}
+
+function addCustomPeripheralToSelect() {
+  const customInput = document.getElementById('peripheral-custom-input');
+  const select = document.getElementById('peripheral-select');
+  if (!customInput || !select) return;
+
+  const newName = customInput.value.trim();
+  if (!newName) {
+    alert('Please enter a peripheral name first.');
+    return false;
+  }
+
+  const existingDefault = DEFAULT_PERIPHERALS.find(p => p.toLowerCase() === newName.toLowerCase());
+  const finalName = existingDefault || newName;
+
+  if (!existingDefault) {
+    const customList = getCustomPeripherals();
+    if (!customList.some(p => p.toLowerCase() === newName.toLowerCase())) {
+      customList.push(newName);
+      saveCustomPeripherals(customList);
+    }
+  }
+
+  refreshPeripheralSelectOptions(finalName);
+  select.value = finalName;
+  toggleCustomPeripheralInput(false);
+  return true;
+}
+
+function deleteSelectedPeripheralOption() {
+  const select = document.getElementById('peripheral-select');
+  if (!select) return;
+
+  const currentVal = select.value;
+  if (!currentVal) {
+    return alert('Please select a custom peripheral option to delete.');
+  }
+
+  if (DEFAULT_PERIPHERALS.some(p => p.toLowerCase() === currentVal.toLowerCase())) {
+    return alert(`"${currentVal}" is a default peripheral and cannot be deleted.`);
+  }
+
+  if (!confirm(`Delete "${currentVal}" from the Peripheral Type list?`)) return;
+
+  const updatedCustom = getCustomPeripherals().filter(
+    p => p.toLowerCase() !== currentVal.toLowerCase()
+  );
+  saveCustomPeripherals(updatedCustom);
+  refreshPeripheralSelectOptions('');
+}
+
+function handlePeripheralSelectChange() {
+  const selectInput = document.getElementById('peripheral-select');
+  if (selectInput && selectInput.value) {
+    toggleCustomPeripheralInput(false);
   }
 }
 
@@ -511,31 +625,6 @@ function updateAnalytics() {
   }
 }
 
-// Toggle custom peripheral text input inside Peripherals mode
-function toggleCustomPeripheralInput(forceState = null) {
-  const customInput = document.getElementById('peripheral-custom-input');
-  const selectInput = document.getElementById('peripheral-select');
-  if (!customInput || !selectInput) return;
-
-  isCustomPeripheralMode = forceState !== null ? forceState : !isCustomPeripheralMode;
-
-  if (isCustomPeripheralMode) {
-    customInput.style.display = 'block';
-    customInput.focus();
-  } else {
-    customInput.style.display = 'none';
-    customInput.value = '';
-  }
-}
-
-// Clear custom input if a preset option is picked from dropdown
-function handlePeripheralSelectChange() {
-  const selectInput = document.getElementById('peripheral-select');
-  if (selectInput && selectInput.value) {
-    toggleCustomPeripheralInput(false);
-  }
-}
-
 // Toggle Fields: Shows tailored inputs for Ink, Peripherals, RAM, Storage, and other types
 function toggleFormFieldsForType() {
   const typeSelect = document.getElementById('spare-type');
@@ -572,6 +661,7 @@ function toggleFormFieldsForType() {
     }
     if (standardFields) standardFields.style.display = 'none';
   } else if (selectedType === 'peripherals') {
+    refreshPeripheralSelectOptions(document.getElementById('peripheral-select')?.value || '');
     if (brandGroup) brandGroup.style.display = 'none';
     if (modelGroup) modelGroup.style.display = 'none';
     if (brandInput) {
@@ -630,6 +720,7 @@ function openAddSpareModal() {
   document.getElementById('spare-modal-title').textContent = 'Add Spare Part';
   document.getElementById('spare-id').value = '';
   document.getElementById('add-spare-form').reset();
+  refreshPeripheralSelectOptions('');
   toggleCustomPeripheralInput(false);
   toggleFormFieldsForType();
   openModal('spare-modal');
@@ -655,21 +746,8 @@ function editSparePart(id) {
     if (document.getElementById('spare-color')) document.getElementById('spare-color').value = item.color || '';
     if (document.getElementById('spare-quantity')) document.getElementById('spare-quantity').value = item.quantity !== undefined ? item.quantity : 1;
   } else if (itemTypeLower === 'peripherals') {
-    const pSelect = document.getElementById('peripheral-select');
-    const pCustom = document.getElementById('peripheral-custom-input');
-    const presetValues = ['Power Cord', 'SATA Cable', 'Printer Cord'];
     const pVal = item.peripheralType || '';
-
-    if (presetValues.includes(pVal)) {
-      if (pSelect) pSelect.value = pVal;
-    } else if (pVal) {
-      toggleCustomPeripheralInput(true);
-      if (pSelect) pSelect.value = '';
-      if (pCustom) pCustom.value = pVal;
-    } else {
-      if (pSelect) pSelect.value = '';
-    }
-
+    refreshPeripheralSelectOptions(pVal);
     if (document.getElementById('spare-quantity')) document.getElementById('spare-quantity').value = item.quantity !== undefined ? item.quantity : 1;
   } else if (['ram', 'storage'].includes(itemTypeLower)) {
     if (document.getElementById('spare-quantity')) document.getElementById('spare-quantity').value = item.quantity !== undefined ? item.quantity : 1;
@@ -696,9 +774,12 @@ async function handleSaveSpare(e) {
 
   let peripheralTypeVal = '';
   if (isPeripheral) {
-    const customVal = document.getElementById('peripheral-custom-input')?.value.trim() || '';
-    const selectVal = document.getElementById('peripheral-select')?.value || '';
-    peripheralTypeVal = (isCustomPeripheralMode && customVal) ? customVal : (customVal || selectVal);
+    const customInput = document.getElementById('peripheral-custom-input');
+    const customVal = customInput?.value.trim() || '';
+    if (isCustomPeripheralMode && customVal) {
+      if (!addCustomPeripheralToSelect()) return;
+    }
+    peripheralTypeVal = document.getElementById('peripheral-select')?.value || customVal || '';
     if (!peripheralTypeVal) {
       return alert('Please select or enter a Peripheral Type.');
     }

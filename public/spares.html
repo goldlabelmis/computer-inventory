@@ -177,7 +177,10 @@
         <div class="form-group" id="peripheral-type-group" style="display: none;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
             <label style="margin: 0;">Peripheral Type</label>
-            <button type="button" class="btn btn-secondary btn-sm" style="padding: 0.15rem 0.5rem; font-size: 0.75rem;" onclick="toggleCustomPeripheralInput()">+ Add Other</button>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="btn btn-secondary btn-sm" style="padding: 0.15rem 0.5rem; font-size: 0.75rem;" onclick="toggleCustomPeripheralInput()">+ Add Other</button>
+              <button type="button" class="btn btn-danger btn-sm" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; background-color: #ef476f; border: none; color: white;" onclick="deleteSelectedPeripheralOption()">🗑️ Delete</button>
+            </div>
           </div>
           <select id="peripheral-select" class="form-select" onchange="handlePeripheralSelectChange()">
             <option value="">Select Peripheral...</option>
@@ -185,7 +188,10 @@
             <option value="SATA Cable">SATA Cable</option>
             <option value="Printer Cord">Printer Cord</option>
           </select>
-          <input type="text" id="peripheral-custom-input" placeholder="Enter custom peripheral name..." style="display: none; margin-top: 0.5rem;">
+          <div id="custom-peripheral-row" style="display: none; margin-top: 0.5rem; gap: 6px;">
+            <input type="text" id="peripheral-custom-input" placeholder="Enter custom peripheral name..." style="flex: 1;" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addCustomPeripheralToSelect(); }">
+            <button type="button" class="btn btn-primary btn-sm" style="white-space: nowrap;" onclick="addCustomPeripheralToSelect()">Add</button>
+          </div>
         </div>
 
         <!-- CONDITIONAL QUANTITY FIELD (Supports Ink, Storage, RAM, and Peripherals) -->
