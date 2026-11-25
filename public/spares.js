@@ -6,6 +6,7 @@ let sparePartsList = [];
 let currentCategory = 'ALL';
 let currentColorFilter = null;
 let isRefillHistoryVisible = false; // Toggle state for refill history view
+let isCustomPeripheralMode = false; // Toggle state for custom peripheral input
 
 // Initialize Page Data
 document.addEventListener('DOMContentLoaded', () => {
@@ -23,11 +24,12 @@ async function loadSpareParts() {
       sparePartsList = data.map(item => ({
         id: item._id,
         type: item.item_type || item.type,
-        brand: item.brand,
-        model: item.model,
-        specs: item.specs,
-        serial: item.serial_number || item.serial,
+        brand: item.brand || '',
+        model: item.model || '',
+        specs: item.specs || '',
+        serial: item.serial_number || item.serial || '',
         color: item.color || '',
+        peripheralType: item.peripheral_type || item.peripheralType || '',
         quantity: item.quantity !== undefined ? item.quantity : 1,
         status: item.status || 'Available',
         refillHistory: item.refillHistory || []
@@ -79,7 +81,8 @@ function renderSpareCards(dataToRender = getFilteredData()) {
 
     const itemTypeLower = (item.type || '').toLowerCase();
     const isInk = itemTypeLower === 'ink';
-    const hasQuantity = isInk || ['ram', 'storage'].includes(itemTypeLower);
+    const isPeripheral = itemTypeLower === 'peripherals';
+    const hasQuantity = isInk || isPeripheral || ['ram', 'storage'].includes(itemTypeLower);
     
     // Dynamic Ink Color Styling with Enhanced Contrast for Yellow
     let inkBgColor = '#6c757d';
@@ -101,7 +104,15 @@ function renderSpareCards(dataToRender = getFilteredData()) {
       ? `<span class="badge badge-info" style="background-color: ${inkBgColor}; color: #ffffff; font-weight: bold; margin-left: 5px; ${textShadowStyle}">${escapeHTML(item.color)}</span>` 
       : '';
 
-    // Dynamic Columns: Quantity for Ink, RAM, and Storage vs Specs/Serial for others
+    const peripheralBadge = isPeripheral && item.peripheralType
+      ? `<span class="badge badge-info" style="background-color: #3a86ff; color: #ffffff; font-weight: bold; margin-left: 5px;">${escapeHTML(item.peripheralType)}</span>`
+      : '';
+
+    const brandModelText = isPeripheral
+      ? (item.peripheralType ? escapeHTML(item.peripheralType) : 'Peripheral')
+      : (`${escapeHTML(item.brand)} ${escapeHTML(item.model)}`.trim() || 'N/A');
+
+    // Dynamic Columns
     let detailColumns = '';
     if (isInk) {
       detailColumns = `
@@ -109,6 +120,11 @@ function renderSpareCards(dataToRender = getFilteredData()) {
           <label>BOTTLE QUANTITY</label>
           <span>${item.quantity} Bottle(s)</span>
         </div>
+        <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
+      `;
+    } else if (isPeripheral) {
+      detailColumns = `
+        <div class="meta-item"><label>QUANTITY</label><span>${item.quantity} Unit(s)</span></div>
         <div class="meta-item"><label>STATUS</label><span class="badge ${badgeClass}">${escapeHTML(item.status)}</span></div>
       `;
     } else if (hasQuantity) {
@@ -133,8 +149,8 @@ function renderSpareCards(dataToRender = getFilteredData()) {
 
     card.innerHTML = `
       <div class="device-meta" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-        <div class="meta-item"><label>TYPE</label><span>${escapeHTML(item.type)} ${colorBadge}</span></div>
-        <div class="meta-item"><label>BRAND & MODEL</label><span>${escapeHTML(item.brand)} ${escapeHTML(item.model)}</span></div>
+        <div class="meta-item"><label>TYPE</label><span>${escapeHTML(item.type)} ${colorBadge}${peripheralBadge}</span></div>
+        <div class="meta-item"><label>${isPeripheral ? 'PERIPHERAL' : 'BRAND & MODEL'}</label><span>${brandModelText}</span></div>
         ${detailColumns}
         <div class="card-actions admin-only" style="display: flex; gap: 8px; align-items: center;">
           <button class="btn btn-warning btn-sm" style="background-color: #fca311; border: none; color: white;" onclick="editSparePart('${item.id}')">✏️ Edit</button>
@@ -389,7 +405,8 @@ function getFilteredData() {
       (item.brand || '').toLowerCase().includes(searchTerm) ||
       (item.model || '').toLowerCase().includes(searchTerm) ||
       (item.serial || '').toLowerCase().includes(searchTerm) ||
-      (item.color || '').toLowerCase().includes(searchTerm);
+      (item.color || '').toLowerCase().includes(searchTerm) ||
+      (item.peripheralType || '').toLowerCase().includes(searchTerm);
 
     return matchesCategory && matchesColor && matchesSearch;
   });
@@ -494,41 +511,99 @@ function updateAnalytics() {
   }
 }
 
-// Toggle Fields: Shows Quantity for Ink, RAM, and Storage
+// Toggle custom peripheral text input inside Peripherals mode
+function toggleCustomPeripheralInput(forceState = null) {
+  const customInput = document.getElementById('peripheral-custom-input');
+  const selectInput = document.getElementById('peripheral-select');
+  if (!customInput || !selectInput) return;
+
+  isCustomPeripheralMode = forceState !== null ? forceState : !isCustomPeripheralMode;
+
+  if (isCustomPeripheralMode) {
+    customInput.style.display = 'block';
+    customInput.focus();
+  } else {
+    customInput.style.display = 'none';
+    customInput.value = '';
+  }
+}
+
+// Clear custom input if a preset option is picked from dropdown
+function handlePeripheralSelectChange() {
+  const selectInput = document.getElementById('peripheral-select');
+  if (selectInput && selectInput.value) {
+    toggleCustomPeripheralInput(false);
+  }
+}
+
+// Toggle Fields: Shows tailored inputs for Ink, Peripherals, RAM, Storage, and other types
 function toggleFormFieldsForType() {
   const typeSelect = document.getElementById('spare-type');
   const colorGroup = document.getElementById('ink-color-group');
+  const peripheralGroup = document.getElementById('peripheral-type-group');
+  const brandGroup = document.getElementById('brand-group');
+  const modelGroup = document.getElementById('model-group');
+  const brandInput = document.getElementById('spare-brand');
+  const modelInput = document.getElementById('spare-model');
   const quantityGroup = document.getElementById('spare-quantity-group');
   const quantityLabel = document.getElementById('quantity-label');
+  const quantityInput = document.getElementById('spare-quantity');
   const standardFields = document.getElementById('standard-fields-group');
 
   const selectedType = (typeSelect?.value || '').toLowerCase();
+
+  // Reset defaults
+  if (colorGroup) colorGroup.style.display = 'none';
+  if (peripheralGroup) peripheralGroup.style.display = 'none';
+  if (brandGroup) brandGroup.style.display = 'block';
+  if (modelGroup) modelGroup.style.display = 'block';
+  if (brandInput) brandInput.required = true;
+  if (modelInput) modelInput.required = true;
+  if (standardFields) standardFields.style.display = 'block';
+  if (quantityGroup) quantityGroup.style.display = 'none';
 
   if (selectedType === 'ink') {
     if (colorGroup) colorGroup.style.display = 'block';
     if (quantityGroup) quantityGroup.style.display = 'block';
     if (quantityLabel) quantityLabel.textContent = 'Number of Bottles';
-    document.getElementById('spare-quantity').step = '0.5';
+    if (quantityInput) {
+      quantityInput.step = '0.5';
+      quantityInput.min = '0';
+    }
     if (standardFields) standardFields.style.display = 'none';
-  } else if (selectedType === 'ram' || selectedType === 'storage') {
-    if (colorGroup) {
-      colorGroup.style.display = 'none';
-      document.getElementById('spare-color').value = '';
+  } else if (selectedType === 'peripherals') {
+    if (brandGroup) brandGroup.style.display = 'none';
+    if (modelGroup) modelGroup.style.display = 'none';
+    if (brandInput) {
+      brandInput.required = false;
+      brandInput.value = '';
     }
+    if (modelInput) {
+      modelInput.required = false;
+      modelInput.value = '';
+    }
+    if (peripheralGroup) peripheralGroup.style.display = 'block';
+    if (standardFields) standardFields.style.display = 'none';
     if (quantityGroup) quantityGroup.style.display = 'block';
-    if (quantityLabel) quantityLabel.textContent = 'Quantity (Units)';
-    document.getElementById('spare-quantity').step = '1';
-    if (standardFields) standardFields.style.display = 'block';
+    if (quantityLabel) quantityLabel.textContent = 'Quantity';
+    if (quantityInput) {
+      quantityInput.step = '1';
+      quantityInput.min = '1';
+      if (parseFloat(quantityInput.value) < 1 || isNaN(parseFloat(quantityInput.value))) {
+        quantityInput.value = '1';
+      }
+    }
+  } else if (selectedType === 'ram' || selectedType === 'storage') {
+    if (document.getElementById('spare-color')) document.getElementById('spare-color').value = '';
+    if (quantityGroup) quantityGroup.style.display = 'block';
+    if (quantityLabel) quantityLabel.textContent = 'Quantity';
+    if (quantityInput) {
+      quantityInput.step = '1';
+      quantityInput.min = '1';
+    }
   } else {
-    if (colorGroup) {
-      colorGroup.style.display = 'none';
-      document.getElementById('spare-color').value = '';
-    }
-    if (quantityGroup) {
-      quantityGroup.style.display = 'none';
-      document.getElementById('spare-quantity').value = '1';
-    }
-    if (standardFields) standardFields.style.display = 'block';
+    if (document.getElementById('spare-color')) document.getElementById('spare-color').value = '';
+    if (quantityInput) quantityInput.value = '1';
   }
 }
 
@@ -555,6 +630,7 @@ function openAddSpareModal() {
   document.getElementById('spare-modal-title').textContent = 'Add Spare Part';
   document.getElementById('spare-id').value = '';
   document.getElementById('add-spare-form').reset();
+  toggleCustomPeripheralInput(false);
   toggleFormFieldsForType();
   openModal('spare-modal');
 }
@@ -570,12 +646,30 @@ function editSparePart(id) {
   document.getElementById('spare-brand').value = item.brand || '';
   document.getElementById('spare-model').value = item.model || '';
   document.getElementById('spare-status').value = item.status;
-  
+
+  toggleCustomPeripheralInput(false);
   toggleFormFieldsForType();
 
   const itemTypeLower = (item.type || '').toLowerCase();
   if (itemTypeLower === 'ink') {
     if (document.getElementById('spare-color')) document.getElementById('spare-color').value = item.color || '';
+    if (document.getElementById('spare-quantity')) document.getElementById('spare-quantity').value = item.quantity !== undefined ? item.quantity : 1;
+  } else if (itemTypeLower === 'peripherals') {
+    const pSelect = document.getElementById('peripheral-select');
+    const pCustom = document.getElementById('peripheral-custom-input');
+    const presetValues = ['Power Cord', 'SATA Cable', 'Printer Cord'];
+    const pVal = item.peripheralType || '';
+
+    if (presetValues.includes(pVal)) {
+      if (pSelect) pSelect.value = pVal;
+    } else if (pVal) {
+      toggleCustomPeripheralInput(true);
+      if (pSelect) pSelect.value = '';
+      if (pCustom) pCustom.value = pVal;
+    } else {
+      if (pSelect) pSelect.value = '';
+    }
+
     if (document.getElementById('spare-quantity')) document.getElementById('spare-quantity').value = item.quantity !== undefined ? item.quantity : 1;
   } else if (['ram', 'storage'].includes(itemTypeLower)) {
     if (document.getElementById('spare-quantity')) document.getElementById('spare-quantity').value = item.quantity !== undefined ? item.quantity : 1;
@@ -597,17 +691,29 @@ async function handleSaveSpare(e) {
   const typeVal = document.getElementById('spare-type').value;
   const typeValLower = typeVal.toLowerCase();
   const isInk = typeValLower === 'ink';
+  const isPeripheral = typeValLower === 'peripherals';
   const isHardwareWithQty = ['ram', 'storage'].includes(typeValLower);
+
+  let peripheralTypeVal = '';
+  if (isPeripheral) {
+    const customVal = document.getElementById('peripheral-custom-input')?.value.trim() || '';
+    const selectVal = document.getElementById('peripheral-select')?.value || '';
+    peripheralTypeVal = (isCustomPeripheralMode && customVal) ? customVal : (customVal || selectVal);
+    if (!peripheralTypeVal) {
+      return alert('Please select or enter a Peripheral Type.');
+    }
+  }
 
   const payload = {
     item_type: typeVal,
-    brand: document.getElementById('spare-brand').value,
-    model: document.getElementById('spare-model').value,
+    brand: isPeripheral ? '' : document.getElementById('spare-brand').value,
+    model: isPeripheral ? '' : document.getElementById('spare-model').value,
     status: document.getElementById('spare-status').value,
     color: isInk ? document.getElementById('spare-color').value : '',
-    quantity: (isInk || isHardwareWithQty) ? parseFloat(document.getElementById('spare-quantity').value) || 1 : 1,
-    specs: document.getElementById('spare-specs').value,
-    serial_number: document.getElementById('spare-serial').value
+    peripheral_type: peripheralTypeVal,
+    quantity: (isInk || isPeripheral || isHardwareWithQty) ? parseFloat(document.getElementById('spare-quantity').value) || 1 : 1,
+    specs: (isInk || isPeripheral) ? '' : document.getElementById('spare-specs').value,
+    serial_number: (isInk || isPeripheral) ? '' : document.getElementById('spare-serial').value
   };
 
   try {

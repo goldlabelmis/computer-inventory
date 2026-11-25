@@ -47,8 +47,16 @@
           <span class="icon">🎮</span>
           <span class="label">Graphics Cards</span>
         </li>
-        <li onclick="filterSpareCategory('Peripherals', this)">
+        <li onclick="filterSpareCategory('Mouse', this)">
+          <span class="icon">🖱️</span>
+          <span class="label">Mouse</span>
+        </li>
+        <li onclick="filterSpareCategory('Keyboard', this)">
           <span class="icon">⌨️</span>
+          <span class="label">Keyboard</span>
+        </li>
+        <li onclick="filterSpareCategory('Peripherals', this)">
+          <span class="icon">🔌</span>
           <span class="label">Peripherals</span>
         </li>
         
@@ -126,18 +134,20 @@
               <option value="RAM">RAM</option>
               <option value="Storage">Storage</option>
               <option value="GPU">GPU</option>
+              <option value="Mouse">Mouse</option>
+              <option value="Keyboard">Keyboard</option>
               <option value="Peripherals">Peripherals</option>
               <option value="Ink">Ink</option>
             </select>
           </div>
-          <div class="form-group">
+          <div class="form-group" id="brand-group">
             <label>Brand</label>
             <input type="text" id="spare-brand" placeholder="Kingston / Epson..." required>
           </div>
         </div>
 
         <div class="form-row">
-          <div class="form-group">
+          <div class="form-group" id="model-group">
             <label>Model</label>
             <input type="text" id="spare-model" placeholder="Fury Beast / 664..." required>
           </div>
@@ -163,7 +173,22 @@
           </select>
         </div>
 
-        <!-- CONDITIONAL QUANTITY FIELD (Supports Ink, Storage, and RAM) -->
+        <!-- CONDITIONAL PERIPHERAL SELECTION FIELD -->
+        <div class="form-group" id="peripheral-type-group" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+            <label style="margin: 0;">Peripheral Type</label>
+            <button type="button" class="btn btn-secondary btn-sm" style="padding: 0.15rem 0.5rem; font-size: 0.75rem;" onclick="toggleCustomPeripheralInput()">+ Add Other</button>
+          </div>
+          <select id="peripheral-select" class="form-select" onchange="handlePeripheralSelectChange()">
+            <option value="">Select Peripheral...</option>
+            <option value="Power Cord">Power Cord</option>
+            <option value="SATA Cable">SATA Cable</option>
+            <option value="Printer Cord">Printer Cord</option>
+          </select>
+          <input type="text" id="peripheral-custom-input" placeholder="Enter custom peripheral name..." style="display: none; margin-top: 0.5rem;">
+        </div>
+
+        <!-- CONDITIONAL QUANTITY FIELD (Supports Ink, Storage, RAM, and Peripherals) -->
         <div class="form-group" id="spare-quantity-group" style="display: none;">
           <label id="quantity-label">Quantity</label>
           <input type="number" id="spare-quantity" min="1" step="1" value="1" placeholder="e.g. 1">
