@@ -30,6 +30,11 @@ window.closeModal = function(id) {
       document.getElementById('repair-modal-title').innerText = 'Log Repair';
       document.getElementById('add-repair-form').reset();
     }
+    if (id === 'import-modal') {
+      document.getElementById('import-inventory-form')?.reset();
+      const statusBox = document.getElementById('import-status-box');
+      if (statusBox) statusBox.innerText = '';
+    }
   }
 };
 
@@ -227,6 +232,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
   }
+
+  // SPREADSHEET IMPORT FORM
+  const importForm = document.getElementById('import-inventory-form');
+  if (importForm) {
+    importForm.onsubmit = handleSpreadsheetImport;
+  }
 });
 
 /* AUTH & DASHBOARD FUNCTIONS */
@@ -315,6 +326,211 @@ function exportToExcel() {
     return openModal('login-modal');
   }
   window.location.href = `/api/export/excel?computerId=${encodeURIComponent(selectedPCId)}`;
+}
+
+/* SPREADSHEET IMPORT FUNCTIONS */
+function openImportModal() {
+  if (!isAdmin()) {
+    alert('Admin privileges required to import inventory.');
+    return openModal('login-modal');
+  }
+  const form = document.getElementById('import-inventory-form');
+  const statusBox = document.getElementById('import-status-box');
+  if (form) form.reset();
+  if (statusBox) statusBox.innerText = '';
+  openModal('import-modal');
+}
+
+function normalizeRowKeys(row) {
+  const normalized = {};
+  Object.keys(row || {}).forEach(key => {
+    const cleanKey = String(key).trim().toLowerCase().replace(/[\s\-]+/g, '_');
+    normalized[cleanKey] = row[key] !== undefined && row[key] !== null ? String(row[key]).trim() : '';
+  });
+  return normalized;
+}
+
+function pickField(row, keys) {
+  for (const k of keys) {
+    if (row[k]) return row[k];
+  }
+  return '';
+}
+
+async function handleSpreadsheetImport(e) {
+  e.preventDefault();
+  if (!isAdmin()) return alert('Admin access required.');
+
+  const fileInput = document.getElementById('import-file-input');
+  const statusBox = document.getElementById('import-status-box');
+  const submitBtn = document.getElementById('import-submit-btn');
+  const file = fileInput?.files?.[0];
+
+  if (!file) return alert('Please select a spreadsheet file first.');
+  if (typeof XLSX === 'undefined') return alert('Spreadsheet parser (SheetJS) failed to load.');
+
+  submitBtn.disabled = true;
+  statusBox.innerText = 'Reading spreadsheet...';
+
+  try {
+    if (!technicians.length) {
+      await loadTechnicians();
+    }
+
+    const knownTechNames = new Set(
+      (technicians || []).map(t => String(t.name || '').trim().toLowerCase()).filter(Boolean)
+    );
+
+    const resolveTechnician = (rawTech) => {
+      const cleaned = String(rawTech || '').trim();
+      if (!cleaned) return 'N/A';
+      return knownTechNames.has(cleaned.toLowerCase()) ? cleaned : 'N/A';
+    };
+
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[firstSheetName];
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+    if (!rawRows.length) {
+      statusBox.innerText = 'No data rows found in the spreadsheet.';
+      submitBtn.disabled = false;
+      return;
+    }
+
+    const groupedPCs = new Map();
+
+    rawRows.forEach(rawRow => {
+      const r = normalizeRowKeys(rawRow);
+      const pcCode = pickField(r, ['property_code', 'pc_code', 'code']);
+      const pcName = pickField(r, ['property_name', 'pc_name', 'computer_name', 'name']);
+      const groupKey = (pcCode || pcName).toLowerCase();
+      if (!groupKey) return;
+
+      if (!groupedPCs.has(groupKey)) {
+        groupedPCs.set(groupKey, {
+          computer: {
+            property_name: pcName || pcCode,
+            property_code: pcCode || pcName,
+            location: pickField(r, ['location', 'room']),
+            department: pickField(r, ['department', 'dept']),
+            drp1: pickField(r, ['drp1', 'drp_1']),
+            drp2: pickField(r, ['drp2', 'drp_2'])
+          },
+          parts: [],
+          repairs: []
+        });
+      }
+
+      const itemType = pickField(r, ['item_type', 'part_type', 'component_type', 'type']);
+      const brand = pickField(r, ['brand', 'part_brand']);
+      const model = pickField(r, ['model', 'part_model']);
+      const specs = pickField(r, ['specs', 'specifications', 'spec']);
+      const serialNumber = pickField(r, ['serial_number', 'serial', 'sn']);
+      const datePurchased = pickField(r, ['date_purchased', 'purchase_date', 'date']);
+
+      if (itemType || brand || model || specs || serialNumber) {
+        groupedPCs.get(groupKey).parts.push({
+          item_type: itemType || 'Component',
+          brand,
+          model,
+          specs,
+          serial_number: serialNumber,
+          date_purchased: datePurchased
+        });
+      }
+
+      const repairItem = pickField(r, ['repair_item', 'issue', 'problem']);
+      const repairDesc = pickField(r, ['repair_description', 'description', 'work_done', 'action_taken']);
+      const repairDate = pickField(r, ['log_date', 'repair_date']);
+      const rawTech = pickField(r, ['technician', 'tech', 'tech_name', 'technician_name', 'remarks', 'assigned_to']);
+
+      if (repairItem || repairDesc || rawTech) {
+        groupedPCs.get(groupKey).repairs.push({
+          log_date: repairDate || new Date().toISOString().slice(0, 10),
+          item: repairItem || 'Maintenance / Work',
+          description: repairDesc || 'Imported work log',
+          remarks: resolveTechnician(rawTech)
+        });
+      }
+    });
+
+    let createdPCs = 0;
+    let createdParts = 0;
+    let createdRepairs = 0;
+    const entries = Array.from(groupedPCs.values());
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      statusBox.innerText = `Importing workstation ${i + 1} of ${entries.length} (${entry.computer.property_name})...`;
+
+      const existingComp = inventory.find(c =>
+        (c.property_code && entry.computer.property_code && c.property_code.toLowerCase() === entry.computer.property_code.toLowerCase()) ||
+        (c.property_name && entry.computer.property_name && c.property_name.toLowerCase() === entry.computer.property_name.toLowerCase())
+      );
+
+      let computerId = existingComp ? getId(existingComp) : '';
+
+      if (!computerId) {
+        const compRes = await fetch('/api/computers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(entry.computer)
+        });
+
+        if (compRes.status === 401 || compRes.status === 403) {
+          throw new Error('Admin access required.');
+        }
+        if (!compRes.ok) {
+          throw new Error(`Failed to create workstation "${entry.computer.property_name}".`);
+        }
+
+        const createdComp = await compRes.json();
+        computerId = getId(createdComp.data || createdComp);
+        createdPCs++;
+      }
+
+      for (const part of entry.parts) {
+        const partRes = await fetch('/api/components', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            computer_id: computerId,
+            ...part
+          })
+        });
+
+        if (partRes.ok) {
+          createdParts++;
+        }
+      }
+
+      for (const repair of entry.repairs) {
+        const repairRes = await fetch('/api/repair-logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            computer_id: computerId,
+            ...repair
+          })
+        });
+
+        if (repairRes.ok) {
+          createdRepairs++;
+        }
+      }
+    }
+
+    await loadInventory();
+    statusBox.innerText = `Done! Created ${createdPCs} PC(s), ${createdParts} part(s), and ${createdRepairs} log(s).`;
+    setTimeout(() => closeModal('import-modal'), 900);
+  } catch (err) {
+    console.error('Import error:', err);
+    statusBox.innerText = `Import failed: ${err.message}`;
+  } finally {
+    submitBtn.disabled = false;
+  }
 }
 
 /* DATA LOADERS & RENDERERS */

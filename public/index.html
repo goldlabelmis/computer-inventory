@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>168 Computer Inventory</title>
   <link rel="stylesheet" href="style.css">
+  <!-- SheetJS for .xlsx, .xls, and .csv import -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <header class="navbar">
@@ -17,6 +19,7 @@
       <div class="actions">
         <input type="text" id="search-input" placeholder="Search..." class="search-bar">
         <button class="btn btn-secondary admin-only" onclick="exportToExcel()">📊 Export Excel</button>
+        <button class="btn btn-secondary admin-only" onclick="openImportModal()">📥 Import</button>
         <button class="btn btn-secondary admin-only" onclick="openTechModal()">🛠️ Technicians</button>
         
         <!-- SPARE PARTS NAVIGATION BUTTON -->
@@ -74,6 +77,27 @@
 
       <div id="inventory-list"></div>
     </main>
+  </div>
+
+  <!-- MODAL: IMPORT SPREADSHEET -->
+  <div id="import-modal" class="modal">
+    <div class="modal-card">
+      <h3>📥 Import Computer Inventory</h3>
+      <p style="color: var(--text-muted, #6c757d); font-size: 0.88rem; margin-top: 0.4rem;">
+        Upload an <strong>.xlsx</strong>, <strong>.xls</strong>, or <strong>.csv</strong> file. Rows sharing the same PC Code or Name will be grouped into one workstation and each part/detail will be created separately. Any imported technician not in the system will be set to <strong>N/A</strong>.
+      </p>
+      <form id="import-inventory-form">
+        <div class="form-group" style="margin-top: 1rem;">
+          <label>Spreadsheet File (.xlsx, .xls, .csv)</label>
+          <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv" required>
+        </div>
+        <div id="import-status-box" style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-muted, #6c757d);"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('import-modal')">Cancel</button>
+          <button type="submit" id="import-submit-btn" class="btn btn-primary">Start Import</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <!-- MODAL: LOGIN -->
