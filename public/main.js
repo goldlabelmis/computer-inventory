@@ -1188,6 +1188,15 @@ function editRepair(compId, repairId) {
 }
 
 /* DELETE OPERATIONS */
+function refreshAfterLocalMutation() {
+  if (selectedPCId !== 'ALL' && !inventory.some(c => getId(c) === String(selectedPCId))) {
+    selectedPCId = 'ALL';
+  }
+  renderSidebar();
+  filterData();
+  calculateLocalStats();
+}
+
 async function deleteAllPCs() {
   if (!isAdmin()) return alert('Admin access required.');
   if (!inventory.length) return alert('There are no PCs to delete.');
@@ -1196,41 +1205,83 @@ async function deleteAllPCs() {
     return;
   }
 
-  for (const item of [...inventory]) {
-    const id = getId(item);
-    if (!id) continue;
-    const res = await fetch(`/api/computers/${id}`, { method: 'DELETE' });
-    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
+  const btn = document.getElementById('delete-all-pcs-btn');
+  const originalText = btn ? btn.innerText : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = '⏳ Deleting...';
   }
 
-  selectedPCId = 'ALL';
-  expandedCards = {};
-  await loadInventory();
+  try {
+    const ids = [...inventory].map(item => getId(item)).filter(Boolean);
+    const batchSize = 10;
+
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const chunk = ids.slice(i, i + batchSize);
+      if (btn) {
+        btn.innerText = `⏳ Deleting ${Math.min(i + chunk.length, ids.length)}/${ids.length}...`;
+      }
+
+      const results = await Promise.all(
+        chunk.map(id => fetch(`/api/computers/${id}`, { method: 'DELETE' }))
+      );
+
+      if (results.some(res => res.status === 401 || res.status === 403)) {
+        alert('Admin access required.');
+        break;
+      }
+    }
+
+    selectedPCId = 'ALL';
+    expandedCards = {};
+    await loadInventory();
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = originalText || '🗑️ Delete All PC';
+    }
+  }
 }
 
-async function deleteComp(id) { 
+async function deleteComp(id) {
   if (!isAdmin()) return alert('Admin access required.');
-  if (confirm('Delete workstation?')) { 
-    const res = await fetch(`/api/computers/${id}`, { method: 'DELETE' }); 
-    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
-    loadInventory(); 
-  } 
+  if (!confirm('Delete workstation?')) return;
+
+  const res = await fetch(`/api/computers/${id}`, { method: 'DELETE' });
+  if (res.status === 401 || res.status === 403) return alert('Admin access required.');
+  if (!res.ok) return alert('Failed to delete workstation.');
+
+  inventory = inventory.filter(c => getId(c) !== id);
+  delete expandedCards[id];
+  refreshAfterLocalMutation();
 }
 
-async function deletePart(id) { 
+async function deletePart(id) {
   if (!isAdmin()) return alert('Admin access required.');
-  if (confirm('Delete part?')) { 
-    const res = await fetch(`/api/components/${id}`, { method: 'DELETE' }); 
-    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
-    loadInventory(); 
-  } 
+  if (!confirm('Delete part?')) return;
+
+  const res = await fetch(`/api/components/${id}`, { method: 'DELETE' });
+  if (res.status === 401 || res.status === 403) return alert('Admin access required.');
+  if (!res.ok) return alert('Failed to delete part.');
+
+  inventory = inventory.map(comp => ({
+    ...comp,
+    parts: (comp.parts || []).filter(p => getId(p) !== id)
+  }));
+  refreshAfterLocalMutation();
 }
 
-async function deleteRepair(id) { 
+async function deleteRepair(id) {
   if (!isAdmin()) return alert('Admin access required.');
-  if (confirm('Delete log?')) { 
-    const res = await fetch(`/api/repair-logs/${id}`, { method: 'DELETE' }); 
-    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
-    loadInventory(); 
-  } 
+  if (!confirm('Delete log?')) return;
+
+  const res = await fetch(`/api/repair-logs/${id}`, { method: 'DELETE' });
+  if (res.status === 401 || res.status === 403) return alert('Admin access required.');
+  if (!res.ok) return alert('Failed to delete repair log.');
+
+  inventory = inventory.map(comp => ({
+    ...comp,
+    history: (comp.history || []).filter(h => getId(h) !== id)
+  }));
+  refreshAfterLocalMutation();
 }
