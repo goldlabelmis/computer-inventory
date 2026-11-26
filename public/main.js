@@ -269,7 +269,7 @@ async function checkAuth() {
     }
 
     toggleAdminControls();
-    renderTechManageList(); // Refresh list UI after currentUser role resolved
+    renderTechManageList();
     filterData();
   } catch (err) {
     console.error('Auth check error:', err);
@@ -357,12 +357,41 @@ function pickField(row, keys) {
   return '';
 }
 
+function isIgnoredLabel(val) {
+  const clean = String(val || '').trim().toLowerCase();
+  if (!clean) return true;
+  const blockedExact = new Set([
+    'sap computer install',
+    'others',
+    'other',
+    'summary',
+    'all (2026)',
+    'all',
+    'auxiliary',
+    'laptop all',
+    '28',
+    '35',
+    '38',
+    '28 printers',
+    '38 printers',
+    'property name',
+    'property code',
+    '168 computer inventory'
+  ]);
+  if (blockedExact.has(clean)) return true;
+  if (/^\d+(\s+printers?)?$/i.test(clean)) return true;
+  if (/^updated\s+date/i.test(clean)) return true;
+  return false;
+}
+
 function cleanParsedValue(val) {
   if (!val) return '';
-  return String(val)
+  const cleaned = String(val)
     .replace(/,\s*Control\s*No\.?\s*[^,;]*/gi, '')
     .replace(/^[\s,:-]+|[\s,:-]+$/g, '')
     .trim();
+  if (!cleaned || cleaned.toLowerCase() === 'n/a' || cleaned.toLowerCase() === 'na') return '';
+  return cleaned;
 }
 
 function normalizeCategoryType(rawType) {
@@ -371,8 +400,12 @@ function normalizeCategoryType(rawType) {
   if (!lower) return 'Component';
   if (lower === 'cpu' || lower === 'systemunit') return 'CPU';
   if (lower === 'ram' || lower === 'memory') return 'RAM';
-  if (lower === 'ssd' || lower === 'hdd' || lower === 'storage') return 'Storage';
+  if (lower === 'ssd') return 'SSD';
+  if (lower === 'hdd') return 'HDD';
+  if (lower === 'storage') return 'Storage';
   if (lower === 'gpu' || lower === 'vga' || lower === 'graphicscard') return 'GPU';
+  if (lower === 'motherboard' || lower === 'mobo' || lower === 'mb') return 'Motherboard';
+  if (lower === 'case' || lower === 'chassis') return 'Case';
   if (lower === 'monitor' || lower === 'display') return 'Monitor';
   if (lower === 'keyboard') return 'Keyboard';
   if (lower === 'mouse') return 'Mouse';
@@ -381,7 +414,21 @@ function normalizeCategoryType(rawType) {
   return t;
 }
 
-function parsePartsFromDescription(descText, fallbackType = '') {
+function formatCleanDate(rawDate) {
+  const cleaned = cleanParsedValue(rawDate);
+  if (!cleaned) return '';
+  const parts = cleaned.split(/[\/\-]/);
+  if (parts.length === 3) {
+    const mm = parts[0].padStart(2, '0');
+    const dd = parts[1].padStart(2, '0');
+    let yyyy = parts[2];
+    if (yyyy.length === 2) yyyy = parseInt(yyyy, 10) > 50 ? `19${yyyy}` : `20${yyyy}`;
+    return `${mm}/${dd}/${yyyy}`;
+  }
+  return cleaned;
+}
+
+function parsePartsFromDescription(descText, fallbackType = '', sharedMeta = {}) {
   const raw = String(descText || '').trim();
   if (!raw) return [];
 
@@ -400,32 +447,77 @@ function parsePartsFromDescription(descText, fallbackType = '') {
     const serialMatch = seg.match(/(?:serial\s*no\.?|serial\s*number|sn)\s*:\s*([^,;]+)/i);
     const dateMatch = seg.match(/(?:date\s*purchased|purchase\s*date|date)\s*:\s*([^,;]+)/i);
 
-    let itemType = itemMatch ? cleanParsedValue(itemMatch[1]) : cleanParsedValue(fallbackType);
-    let brand = brandMatch ? cleanParsedValue(brandMatch[1]) : '';
-    let model = modelMatch ? cleanParsedValue(modelMatch[1]) : '';
+    let itemType = itemMatch ? normalizeCategoryType(itemMatch[1]) : normalizeCategoryType(fallbackType);
+    let brand = brandMatch ? cleanParsedValue(brandMatch[1]) : cleanParsedValue(sharedMeta.brand);
+    let model = modelMatch ? cleanParsedValue(modelMatch[1]) : cleanParsedValue(sharedMeta.model);
     let specs = specsMatch ? cleanParsedValue(specsMatch[1]) : '';
     const caseVal = caseMatch ? cleanParsedValue(caseMatch[1]) : '';
-    let serialNumber = serialMatch ? cleanParsedValue(serialMatch[1]) : '';
-    let datePurchased = dateMatch ? cleanParsedValue(dateMatch[1]) : '';
+    let serialNumber = serialMatch ? cleanParsedValue(serialMatch[1]) : cleanParsedValue(sharedMeta.serial);
+    let datePurchased = dateMatch ? formatCleanDate(dateMatch[1]) : formatCleanDate(sharedMeta.date);
+
+    if (itemType === 'CPU' && specs) {
+      const tokens = specs.split(',').map(t => t.trim()).filter(Boolean);
+      const primarySpecs = [];
+
+      tokens.forEach(tok => {
+        const lowerTok = tok.toLowerCase();
+        if (/\bssd\b/i.test(tok) && !/core\s*i\d/i.test(tok)) {
+          parts.push({
+            item_type: 'SSD',
+            brand: '',
+            model: '',
+            specs: tok,
+            serial_number: '',
+            date_purchased: datePurchased
+          });
+        } else if (/\b(ram|ddr\d|gb\s*ram|ram\s*\d+gb)\b/i.test(lowerTok)) {
+          parts.push({
+            item_type: 'RAM',
+            brand: '',
+            model: '',
+            specs: tok,
+            serial_number: '',
+            date_purchased: datePurchased
+          });
+        } else if (/\b(motherboard|mobo|\bmb\b|h310|h81|b450|b550|z170|z370|z490)\b/i.test(lowerTok)) {
+          parts.push({
+            item_type: 'Motherboard',
+            brand: '',
+            model: tok,
+            specs: '',
+            serial_number: '',
+            date_purchased: datePurchased
+          });
+        } else {
+          primarySpecs.push(tok);
+        }
+      });
+
+      specs = primarySpecs.join(', ');
+    }
 
     if (caseVal) {
-      specs = specs ? `${specs} | Case: ${caseVal}` : `Case: ${caseVal}`;
+      parts.push({
+        item_type: 'Case',
+        brand: caseVal,
+        model: '',
+        specs: '',
+        serial_number: '',
+        date_purchased: datePurchased
+      });
     }
 
     if (!itemMatch && !brandMatch && !modelMatch && !specsMatch && !serialMatch) {
       const cleanedWhole = cleanParsedValue(seg);
       if (cleanedWhole) {
-        itemType = cleanParsedValue(fallbackType) || 'Component';
+        itemType = normalizeCategoryType(fallbackType || 'Component');
         specs = cleanedWhole;
       }
     }
 
-    if (serialNumber.toLowerCase() === 'n/a') serialNumber = 'N/A';
-    if (datePurchased.toLowerCase() === 'n/a') datePurchased = 'N/A';
-
     if (itemType || brand || model || specs || serialNumber) {
       parts.push({
-        item_type: normalizeCategoryType(itemType || fallbackType || 'Component'),
+        item_type: itemType,
         brand,
         model,
         specs,
@@ -435,7 +527,13 @@ function parsePartsFromDescription(descText, fallbackType = '') {
     }
   });
 
-  return parts;
+  const seen = new Set();
+  return parts.filter(p => {
+    const key = `${p.item_type}|${p.brand}|${p.model}|${p.specs}|${p.serial_number}|${p.date_purchased}`.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function extractTableRowsFromSheet(sheet, requiredHeaderTokens) {
@@ -514,7 +612,6 @@ async function handleSpreadsheetImport(e) {
     }
 
     const groupedPCs = new Map();
-    const standaloneRepairs = [];
     let lastGroupKey = '';
 
     workbook.SheetNames.forEach(sheetName => {
@@ -525,55 +622,65 @@ async function handleSpreadsheetImport(e) {
         const r = normalizeRowKeys(rawRow);
         const pcCode = pickField(r, ['property_code', 'pc_code', 'code']);
         const pcName = pickField(r, ['property_name', 'pc_name', 'computer_name', 'name']);
-        const groupKey = (pcCode || pcName).toLowerCase();
 
-        if (!groupKey) return;
+        if (isIgnoredLabel(pcName) && isIgnoredLabel(pcCode)) return;
+
+        const validName = !isIgnoredLabel(pcName) ? pcName : (!isIgnoredLabel(pcCode) ? pcCode : '');
+        const validCode = !isIgnoredLabel(pcCode) ? pcCode : validName;
+        if (!validName && !validCode) return;
+
+        const groupKey = (validCode || validName).toLowerCase();
         lastGroupKey = groupKey;
 
         if (!groupedPCs.has(groupKey)) {
           groupedPCs.set(groupKey, {
             computer: {
-              property_name: pcName || pcCode,
-              property_code: pcCode || pcName,
+              property_name: validName,
+              property_code: validCode,
               location: pickField(r, ['location', 'loc', 'room']),
               department: pickField(r, ['department', 'dept']),
               drp1: pickField(r, ['drp1', 'drp_1']),
               drp2: pickField(r, ['drp2', 'drp_2'])
             },
             parts: [],
+            seenParts: new Set(),
             repairs: []
           });
         }
 
+        const groupEntry = groupedPCs.get(groupKey);
         const descText = pickField(r, ['description', 'desc', 'specs', 'specifications']);
         const explicitType = pickField(r, ['item_type', 'part_type', 'component_type', 'type']);
-        const parsedParts = parsePartsFromDescription(descText, explicitType);
+        const sharedMeta = {
+          brand: pickField(r, ['brand', 'part_brand']),
+          model: pickField(r, ['model', 'part_model']),
+          serial: pickField(r, ['serial_number', 'serial_no', 'serial', 'sn']),
+          date: pickField(r, ['date_purchased', 'purchase_date', 'date'])
+        };
 
+        const parsedParts = parsePartsFromDescription(descText, explicitType, sharedMeta);
         if (parsedParts.length > 0) {
           parsedParts.forEach(part => {
-            const brandOverride = pickField(r, ['brand', 'part_brand']);
-            const modelOverride = pickField(r, ['model', 'part_model']);
-            const serialOverride = pickField(r, ['serial_number', 'serial_no', 'serial', 'sn']);
-            const dateOverride = pickField(r, ['date_purchased', 'purchase_date', 'date']);
-
-            groupedPCs.get(groupKey).parts.push({
-              item_type: part.item_type,
-              brand: brandOverride || part.brand || '',
-              model: modelOverride || part.model || '',
-              specs: part.specs || '',
-              serial_number: serialOverride || part.serial_number || '',
-              date_purchased: dateOverride || part.date_purchased || ''
-            });
+            const partKey = `${part.item_type}|${part.brand}|${part.model}|${part.specs}|${part.serial_number}|${part.date_purchased}`.toLowerCase();
+            if (!groupEntry.seenParts.has(partKey)) {
+              groupEntry.seenParts.add(partKey);
+              groupEntry.parts.push(part);
+            }
           });
-        } else if (explicitType || pickField(r, ['brand', 'model', 'serial_number', 'serial_no', 'sn'])) {
-          groupedPCs.get(groupKey).parts.push({
+        } else if (explicitType || sharedMeta.brand || sharedMeta.model || sharedMeta.serial) {
+          const part = {
             item_type: normalizeCategoryType(explicitType || 'Component'),
-            brand: pickField(r, ['brand', 'part_brand']),
-            model: pickField(r, ['model', 'part_model']),
-            specs: pickField(r, ['specs', 'specifications', 'spec']),
-            serial_number: pickField(r, ['serial_number', 'serial_no', 'serial', 'sn']),
-            date_purchased: pickField(r, ['date_purchased', 'purchase_date', 'date'])
-          });
+            brand: cleanParsedValue(sharedMeta.brand),
+            model: cleanParsedValue(sharedMeta.model),
+            specs: '',
+            serial_number: cleanParsedValue(sharedMeta.serial),
+            date_purchased: formatCleanDate(sharedMeta.date)
+          };
+          const partKey = `${part.item_type}|${part.brand}|${part.model}|${part.specs}|${part.serial_number}|${part.date_purchased}`.toLowerCase();
+          if (!groupEntry.seenParts.has(partKey)) {
+            groupEntry.seenParts.add(partKey);
+            groupEntry.parts.push(part);
+          }
         }
       });
 
@@ -589,7 +696,7 @@ async function handleSpreadsheetImport(e) {
         if (repairItem.toLowerCase() === 'item' && repairDesc.toLowerCase() === 'description') return;
 
         const repairObj = {
-          log_date: repairDate || '',
+          log_date: formatCleanDate(repairDate),
           item: repairItem || 'Maintenance / Work',
           description: repairDesc || '-',
           remarks: resolveTechnician(rawTech)
@@ -600,57 +707,53 @@ async function handleSpreadsheetImport(e) {
           groupedPCs.get(rowPcKey).repairs.push(repairObj);
         } else if (lastGroupKey && groupedPCs.has(lastGroupKey)) {
           groupedPCs.get(lastGroupKey).repairs.push(repairObj);
-        } else {
-          standaloneRepairs.push(repairObj);
         }
       });
     });
 
     const entries = Array.from(groupedPCs.values());
     if (!entries.length) {
-      statusBox.innerText = 'No valid workstation rows found. Make sure your file has Property Name / Property Code and Description columns.';
+      statusBox.innerText = 'No valid workstation rows found.';
       submitBtn.disabled = false;
       return;
     }
 
     let createdPCs = 0;
+    let skippedPCs = 0;
     let createdParts = 0;
     let createdRepairs = 0;
 
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
-      statusBox.innerText = `Importing workstation ${i + 1} of ${entries.length} (${entry.computer.property_name})...`;
+      statusBox.innerText = `Processing ${i + 1} of ${entries.length} (${entry.computer.property_name})...`;
 
-      const existingComp = inventory.find(c =>
-        (c.property_code && entry.computer.property_code && c.property_code.toLowerCase() === entry.computer.property_code.toLowerCase()) ||
-        (c.property_name && entry.computer.property_name && c.property_name.toLowerCase() === entry.computer.property_name.toLowerCase())
+      // Automatically skip if computer already exists in inventory
+      const alreadyExists = inventory.some(c =>
+        (c.property_code && entry.computer.property_code && c.property_code.trim().toLowerCase() === entry.computer.property_code.trim().toLowerCase()) ||
+        (c.property_name && entry.computer.property_name && c.property_name.trim().toLowerCase() === entry.computer.property_name.trim().toLowerCase())
       );
 
-      let computerId = existingComp ? getId(existingComp) : '';
-
-      if (!computerId) {
-        const compRes = await fetch('/api/computers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(entry.computer)
-        });
-
-        if (compRes.status === 401 || compRes.status === 403) {
-          throw new Error('Admin access required.');
-        }
-        if (!compRes.ok) {
-          throw new Error(`Failed to create workstation "${entry.computer.property_name}".`);
-        }
-
-        const createdComp = await compRes.json();
-        computerId = getId(createdComp.data || createdComp);
-        createdPCs++;
+      if (alreadyExists) {
+        skippedPCs++;
+        continue;
       }
 
-      const repairsToSave = [...entry.repairs];
-      if (i === 0 && standaloneRepairs.length) {
-        repairsToSave.push(...standaloneRepairs);
+      const compRes = await fetch('/api/computers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry.computer)
+      });
+
+      if (compRes.status === 401 || compRes.status === 403) {
+        throw new Error('Admin access required.');
       }
+      if (!compRes.ok) {
+        throw new Error(`Failed to create workstation "${entry.computer.property_name}".`);
+      }
+
+      const createdComp = await compRes.json();
+      const computerId = getId(createdComp.data || createdComp);
+      createdPCs++;
 
       for (const part of entry.parts) {
         const partRes = await fetch('/api/components', {
@@ -667,7 +770,7 @@ async function handleSpreadsheetImport(e) {
         }
       }
 
-      for (const repair of repairsToSave) {
+      for (const repair of entry.repairs) {
         const repairRes = await fetch('/api/repair-logs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -684,8 +787,8 @@ async function handleSpreadsheetImport(e) {
     }
 
     await loadInventory();
-    statusBox.innerText = `Done! Imported ${createdPCs} new PC(s), ${createdParts} separate part(s), and ${createdRepairs} repair log(s).`;
-    setTimeout(() => closeModal('import-modal'), 1000);
+    statusBox.innerText = `Done! Added ${createdPCs} PC(s), skipped ${skippedPCs} existing PC(s), added ${createdParts} part(s), and ${createdRepairs} repair log(s).`;
+    setTimeout(() => closeModal('import-modal'), 1200);
   } catch (err) {
     console.error('Import error:', err);
     statusBox.innerText = `Import failed: ${err.message}`;
@@ -803,7 +906,6 @@ function filterData() {
     );
   }
 
-  // Sort main cards alphabetically by property_name to match sidebar order
   filtered.sort((a, b) => 
     (a.property_name || '').localeCompare(b.property_name || '', undefined, { numeric: true, sensitivity: 'base' })
   );
@@ -814,6 +916,15 @@ function filterData() {
 function toggleDetails(id) {
   expandedCards[id] = !expandedCards[id];
   filterData();
+}
+
+function formatPartSpecsAndSN(p) {
+  const cleanSpecs = cleanParsedValue(p.specs);
+  const cleanSN = cleanParsedValue(p.serial_number);
+  if (cleanSpecs && cleanSN) return `${cleanSpecs} (SN: ${cleanSN})`;
+  if (cleanSpecs) return cleanSpecs;
+  if (cleanSN) return `(SN: ${cleanSN})`;
+  return '';
 }
 
 function render(data) {
@@ -829,13 +940,25 @@ function render(data) {
     const actionHeader = isAdmin() ? '<th>Action</th>' : '';
     const tableColspan = isAdmin() ? 5 : 4;
 
-    const partsRows = (item.parts || []).map(p => {
+    const uniqueParts = [];
+    const seenPartKeys = new Set();
+    (item.parts || []).forEach(p => {
+      const key = `${p.item_type || ''}|${p.brand || ''}|${p.model || ''}|${cleanParsedValue(p.specs)}|${cleanParsedValue(p.serial_number)}|${p.date_purchased || ''}`.toLowerCase();
+      if (!seenPartKeys.has(key)) {
+        seenPartKeys.add(key);
+        uniqueParts.push(p);
+      }
+    });
+
+    const partsRows = uniqueParts.map(p => {
       const partId = getId(p);
+      const brandModel = `${p.brand || ''} ${p.model || ''}`.trim();
+      const specsAndSN = formatPartSpecsAndSN(p);
       return `
         <tr>
           <td><strong>${p.item_type || '-'}</strong></td>
-          <td>${p.brand || ''} ${p.model || ''}</td>
-          <td>${p.specs || ''} ${p.serial_number ? '(SN: ' + p.serial_number + ')' : ''}</td>
+          <td>${brandModel}</td>
+          <td>${specsAndSN}</td>
           <td>${p.date_purchased || '-'}</td>
           ${isAdmin() ? `
             <td style="white-space: nowrap;">
@@ -994,6 +1117,26 @@ function editRepair(compId, repairId) {
 }
 
 /* DELETE OPERATIONS */
+async function deleteAllPCs() {
+  if (!isAdmin()) return alert('Admin access required.');
+  if (!inventory.length) return alert('There are no PCs to delete.');
+
+  if (!confirm(`Are you sure you want to delete ALL ${inventory.length} PC(s) and their recorded parts/repairs? This cannot be undone.`)) {
+    return;
+  }
+
+  for (const item of [...inventory]) {
+    const id = getId(item);
+    if (!id) continue;
+    const res = await fetch(`/api/computers/${id}`, { method: 'DELETE' });
+    if (res.status === 401 || res.status === 403) return alert('Admin access required.');
+  }
+
+  selectedPCId = 'ALL';
+  expandedCards = {};
+  await loadInventory();
+}
+
 async function deleteComp(id) { 
   if (!isAdmin()) return alert('Admin access required.');
   if (confirm('Delete workstation?')) { 

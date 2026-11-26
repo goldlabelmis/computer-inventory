@@ -48,8 +48,9 @@
     <!-- MAIN CONTENT -->
     <main class="main-content">
       <!-- USER STATUS BAR -->
-      <div class="status-bar">
+      <div class="status-bar" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
         <div id="user-info"><span>View Only Mode</span></div>
+        <button type="button" id="delete-all-pcs-btn" class="btn btn-danger btn-sm admin-only" onclick="deleteAllPCs()">🗑️ Delete All PC</button>
       </div>
 
       <!-- ANALYTICS DASHBOARD WIDGET -->
