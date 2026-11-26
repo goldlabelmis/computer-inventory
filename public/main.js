@@ -357,9 +357,10 @@ function pickField(row, keys) {
   return '';
 }
 
-function isIgnoredLabel(val) {
+function isIgnoredComputerLabel(val) {
   const clean = String(val || '').trim().toLowerCase();
   if (!clean) return true;
+
   const blockedExact = new Set([
     'sap computer install',
     'others',
@@ -376,10 +377,22 @@ function isIgnoredLabel(val) {
     '38 printers',
     'property name',
     'property code',
-    '168 computer inventory'
+    '168 computer inventory',
+    'umaga',
+    'hapon',
+    'gabi',
+    'date',
+    'item',
+    'description',
+    'remarks',
+    'tech',
+    'technician'
   ]);
+
   if (blockedExact.has(clean)) return true;
+  if (/^(transfer|transfered|transferred)\s+(to|from)\b/i.test(clean)) return true;
   if (/^\d+(\s+printers?)?$/i.test(clean)) return true;
+  if (/^\d{1,2}\/\d{1,2}(\/\d{2,4})?$/.test(clean)) return true;
   if (/^updated\s+date/i.test(clean)) return true;
   return false;
 }
@@ -536,40 +549,49 @@ function parsePartsFromDescription(descText, fallbackType = '', sharedMeta = {})
   });
 }
 
-function extractTableRowsFromSheet(sheet, requiredHeaderTokens) {
+function extractSheetStream(sheet) {
   const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
   if (!matrix || !matrix.length) return [];
 
-  let headerRowIndex = -1;
+  let invHeaders = null;
+  let repairHeaders = null;
+  const stream = [];
+
   for (let i = 0; i < matrix.length; i++) {
-    const rowCells = matrix[i].map(c => String(c || '').trim().toLowerCase().replace(/[\s\-]+/g, '_'));
-    const matchCount = requiredHeaderTokens.filter(token => rowCells.includes(token)).length;
-    if (matchCount >= 2 || (requiredHeaderTokens.length === 1 && matchCount === 1)) {
-      headerRowIndex = i;
-      break;
+    const rawCells = matrix[i].map(c => String(c || '').trim());
+    if (rawCells.every(c => c === '')) continue;
+
+    const normCells = rawCells.map(c => c.toLowerCase().replace(/[\s\-]+/g, '_'));
+
+    const invMatches = ['property_name', 'property_code', 'description', 'loc', 'department'].filter(t => normCells.includes(t)).length;
+    if (invMatches >= 2) {
+      invHeaders = normCells.map((h, idx) => h || `col_${idx}`);
+      repairHeaders = null;
+      continue;
+    }
+
+    const repairMatches = ['date', 'item', 'description', 'remarks'].filter(t => normCells.includes(t)).length;
+    if (repairMatches >= 3) {
+      repairHeaders = normCells.map((h, idx) => h || `col_${idx}`);
+      continue;
+    }
+
+    if (repairHeaders) {
+      const obj = {};
+      repairHeaders.forEach((h, idx) => {
+        obj[h] = rawCells[idx] || '';
+      });
+      stream.push({ kind: 'repair', row: obj });
+    } else if (invHeaders) {
+      const obj = {};
+      invHeaders.forEach((h, idx) => {
+        obj[h] = rawCells[idx] || '';
+      });
+      stream.push({ kind: 'inventory', row: obj });
     }
   }
 
-  if (headerRowIndex === -1) return [];
-
-  const headers = matrix[headerRowIndex].map((h, idx) => {
-    const clean = String(h || '').trim().toLowerCase().replace(/[\s\-]+/g, '_');
-    return clean || `col_${idx}`;
-  });
-
-  const rows = [];
-  for (let r = headerRowIndex + 1; r < matrix.length; r++) {
-    const rowArr = matrix[r];
-    if (!rowArr || rowArr.every(v => String(v || '').trim() === '')) continue;
-
-    const obj = {};
-    headers.forEach((h, idx) => {
-      obj[h] = rowArr[idx] !== undefined && rowArr[idx] !== null ? String(rowArr[idx]).trim() : '';
-    });
-    rows.push(obj);
-  }
-
-  return rows;
+  return stream;
 }
 
 async function handleSpreadsheetImport(e) {
@@ -612,101 +634,126 @@ async function handleSpreadsheetImport(e) {
     }
 
     const groupedPCs = new Map();
-    let lastGroupKey = '';
+
+    const ensurePCGroup = (nameVal, codeVal, meta = {}) => {
+      const validName = !isIgnoredComputerLabel(nameVal) ? String(nameVal).trim() : '';
+      const validCode = !isIgnoredComputerLabel(codeVal) ? String(codeVal).trim() : '';
+      if (!validName && !validCode) return '';
+
+      const resolvedName = validName || validCode;
+      const resolvedCode = validCode || validName;
+
+      for (const [existingKey, existingGroup] of groupedPCs.entries()) {
+        if (
+          (existingGroup.computer.property_code && existingGroup.computer.property_code.toLowerCase() === resolvedCode.toLowerCase()) ||
+          (existingGroup.computer.property_name && existingGroup.computer.property_name.toLowerCase() === resolvedName.toLowerCase()) ||
+          existingGroup.computer.property_name.toLowerCase() === resolvedCode.toLowerCase() ||
+          existingGroup.computer.property_code.toLowerCase() === resolvedName.toLowerCase()
+        ) {
+          return existingKey;
+        }
+      }
+
+      const groupKey = (resolvedCode || resolvedName).toLowerCase();
+      groupedPCs.set(groupKey, {
+        computer: {
+          property_name: resolvedName,
+          property_code: resolvedCode,
+          location: meta.location || '',
+          department: meta.department || '',
+          drp1: meta.drp1 || '',
+          drp2: meta.drp2 || ''
+        },
+        parts: [],
+        seenParts: new Set(),
+        repairs: []
+      });
+      return groupKey;
+    };
 
     workbook.SheetNames.forEach(sheetName => {
       const sheet = workbook.Sheets[sheetName];
+      const stream = extractSheetStream(sheet);
+      let sheetPcKey = '';
 
-      const invRows = extractTableRowsFromSheet(sheet, ['property_name', 'property_code', 'description', 'loc', 'department']);
-      invRows.forEach(rawRow => {
-        const r = normalizeRowKeys(rawRow);
-        const pcCode = pickField(r, ['property_code', 'pc_code', 'code']);
-        const pcName = pickField(r, ['property_name', 'pc_name', 'computer_name', 'name']);
+      const tabPcName = !isIgnoredComputerLabel(sheetName) ? String(sheetName).trim() : '';
 
-        if (isIgnoredLabel(pcName) && isIgnoredLabel(pcCode)) return;
+      stream.forEach(entryItem => {
+        if (entryItem.kind === 'inventory') {
+          const r = normalizeRowKeys(entryItem.row);
+          const pcCode = pickField(r, ['property_code', 'pc_code', 'code']);
+          const pcName = pickField(r, ['property_name', 'pc_name', 'computer_name', 'name']);
 
-        const validName = !isIgnoredLabel(pcName) ? pcName : (!isIgnoredLabel(pcCode) ? pcCode : '');
-        const validCode = !isIgnoredLabel(pcCode) ? pcCode : validName;
-        if (!validName && !validCode) return;
-
-        const groupKey = (validCode || validName).toLowerCase();
-        lastGroupKey = groupKey;
-
-        if (!groupedPCs.has(groupKey)) {
-          groupedPCs.set(groupKey, {
-            computer: {
-              property_name: validName,
-              property_code: validCode,
-              location: pickField(r, ['location', 'loc', 'room']),
-              department: pickField(r, ['department', 'dept']),
-              drp1: pickField(r, ['drp1', 'drp_1']),
-              drp2: pickField(r, ['drp2', 'drp_2'])
-            },
-            parts: [],
-            seenParts: new Set(),
-            repairs: []
+          const groupKey = ensurePCGroup(pcName, pcCode, {
+            location: pickField(r, ['location', 'loc', 'room']),
+            department: pickField(r, ['department', 'dept']),
+            drp1: pickField(r, ['drp1', 'drp_1']),
+            drp2: pickField(r, ['drp2', 'drp_2'])
           });
-        }
 
-        const groupEntry = groupedPCs.get(groupKey);
-        const descText = pickField(r, ['description', 'desc', 'specs', 'specifications']);
-        const explicitType = pickField(r, ['item_type', 'part_type', 'component_type', 'type']);
-        const sharedMeta = {
-          brand: pickField(r, ['brand', 'part_brand']),
-          model: pickField(r, ['model', 'part_model']),
-          serial: pickField(r, ['serial_number', 'serial_no', 'serial', 'sn']),
-          date: pickField(r, ['date_purchased', 'purchase_date', 'date'])
-        };
+          if (!groupKey) return;
+          sheetPcKey = groupKey;
 
-        const parsedParts = parsePartsFromDescription(descText, explicitType, sharedMeta);
-        if (parsedParts.length > 0) {
-          parsedParts.forEach(part => {
+          const groupEntry = groupedPCs.get(groupKey);
+          const descText = pickField(r, ['description', 'desc', 'specs', 'specifications']);
+          const explicitType = pickField(r, ['item_type', 'part_type', 'component_type', 'type']);
+          const sharedMeta = {
+            brand: pickField(r, ['brand', 'part_brand']),
+            model: pickField(r, ['model', 'part_model']),
+            serial: pickField(r, ['serial_number', 'serial_no', 'serial', 'sn']),
+            date: pickField(r, ['date_purchased', 'purchase_date', 'date'])
+          };
+
+          const parsedParts = parsePartsFromDescription(descText, explicitType, sharedMeta);
+          if (parsedParts.length > 0) {
+            parsedParts.forEach(part => {
+              const partKey = `${part.item_type}|${part.brand}|${part.model}|${part.specs}|${part.serial_number}|${part.date_purchased}`.toLowerCase();
+              if (!groupEntry.seenParts.has(partKey)) {
+                groupEntry.seenParts.add(partKey);
+                groupEntry.parts.push(part);
+              }
+            });
+          } else if (explicitType || sharedMeta.brand || sharedMeta.model || sharedMeta.serial) {
+            const part = {
+              item_type: normalizeCategoryType(explicitType || 'Component'),
+              brand: cleanParsedValue(sharedMeta.brand),
+              model: cleanParsedValue(sharedMeta.model),
+              specs: '',
+              serial_number: cleanParsedValue(sharedMeta.serial),
+              date_purchased: formatCleanDate(sharedMeta.date)
+            };
             const partKey = `${part.item_type}|${part.brand}|${part.model}|${part.specs}|${part.serial_number}|${part.date_purchased}`.toLowerCase();
             if (!groupEntry.seenParts.has(partKey)) {
               groupEntry.seenParts.add(partKey);
               groupEntry.parts.push(part);
             }
-          });
-        } else if (explicitType || sharedMeta.brand || sharedMeta.model || sharedMeta.serial) {
-          const part = {
-            item_type: normalizeCategoryType(explicitType || 'Component'),
-            brand: cleanParsedValue(sharedMeta.brand),
-            model: cleanParsedValue(sharedMeta.model),
-            specs: '',
-            serial_number: cleanParsedValue(sharedMeta.serial),
-            date_purchased: formatCleanDate(sharedMeta.date)
-          };
-          const partKey = `${part.item_type}|${part.brand}|${part.model}|${part.specs}|${part.serial_number}|${part.date_purchased}`.toLowerCase();
-          if (!groupEntry.seenParts.has(partKey)) {
-            groupEntry.seenParts.add(partKey);
-            groupEntry.parts.push(part);
           }
-        }
-      });
+        } else if (entryItem.kind === 'repair') {
+          const r = normalizeRowKeys(entryItem.row);
+          const repairDate = pickField(r, ['date', 'log_date', 'repair_date']);
+          const repairItem = pickField(r, ['item', 'repair_item', 'issue', 'problem']);
+          const repairDesc = pickField(r, ['description', 'repair_description', 'work_done', 'action_taken']);
+          const rawTech = pickField(r, ['remarks', 'technician', 'tech', 'tech_name', 'technician_name', 'assigned_to']);
 
-      const repairRows = extractTableRowsFromSheet(sheet, ['date', 'item', 'description', 'remarks']);
-      repairRows.forEach(rawRow => {
-        const r = normalizeRowKeys(rawRow);
-        const repairDate = pickField(r, ['date', 'log_date', 'repair_date']);
-        const repairItem = pickField(r, ['item', 'repair_item', 'issue', 'problem']);
-        const repairDesc = pickField(r, ['description', 'repair_description', 'work_done', 'action_taken']);
-        const rawTech = pickField(r, ['remarks', 'technician', 'tech', 'tech_name', 'technician_name', 'assigned_to']);
+          if (!repairDate && !repairItem && !repairDesc && !rawTech) return;
+          if (repairItem.toLowerCase() === 'item' && repairDesc.toLowerCase() === 'description') return;
 
-        if (!repairDate && !repairItem && !repairDesc && !rawTech) return;
-        if (repairItem.toLowerCase() === 'item' && repairDesc.toLowerCase() === 'description') return;
+          const repairObj = {
+            log_date: formatCleanDate(repairDate),
+            item: repairItem || 'Maintenance / Work',
+            description: repairDesc || '-',
+            remarks: resolveTechnician(rawTech)
+          };
 
-        const repairObj = {
-          log_date: formatCleanDate(repairDate),
-          item: repairItem || 'Maintenance / Work',
-          description: repairDesc || '-',
-          remarks: resolveTechnician(rawTech)
-        };
+          let targetKey = sheetPcKey;
+          if (!targetKey && tabPcName) {
+            targetKey = ensurePCGroup(tabPcName, '');
+            sheetPcKey = targetKey;
+          }
 
-        const rowPcKey = pickField(r, ['property_code', 'property_name', 'pc_code', 'pc_name']).toLowerCase();
-        if (rowPcKey && groupedPCs.has(rowPcKey)) {
-          groupedPCs.get(rowPcKey).repairs.push(repairObj);
-        } else if (lastGroupKey && groupedPCs.has(lastGroupKey)) {
-          groupedPCs.get(lastGroupKey).repairs.push(repairObj);
+          if (targetKey && groupedPCs.has(targetKey)) {
+            groupedPCs.get(targetKey).repairs.push(repairObj);
+          }
         }
       });
     });
@@ -727,13 +774,37 @@ async function handleSpreadsheetImport(e) {
       const entry = entries[i];
       statusBox.innerText = `Processing ${i + 1} of ${entries.length} (${entry.computer.property_name})...`;
 
-      // Automatically skip if computer already exists in inventory
-      const alreadyExists = inventory.some(c =>
+      const existingComp = inventory.find(c =>
         (c.property_code && entry.computer.property_code && c.property_code.trim().toLowerCase() === entry.computer.property_code.trim().toLowerCase()) ||
-        (c.property_name && entry.computer.property_name && c.property_name.trim().toLowerCase() === entry.computer.property_name.trim().toLowerCase())
+        (c.property_name && entry.computer.property_name && c.property_name.trim().toLowerCase() === entry.computer.property_name.trim().toLowerCase()) ||
+        (c.property_name && entry.computer.property_code && c.property_name.trim().toLowerCase() === entry.computer.property_code.trim().toLowerCase()) ||
+        (c.property_code && entry.computer.property_name && c.property_code.trim().toLowerCase() === entry.computer.property_name.trim().toLowerCase())
       );
 
-      if (alreadyExists) {
+      if (existingComp) {
+        const existingId = getId(existingComp);
+        const existingHistory = existingComp.history || [];
+
+        for (const repair of entry.repairs) {
+          const isDuplicateRepair = existingHistory.some(h =>
+            String(h.log_date || '').trim().toLowerCase() === String(repair.log_date || '').trim().toLowerCase() &&
+            String(h.item || '').trim().toLowerCase() === String(repair.item || '').trim().toLowerCase() &&
+            String(h.description || '').trim().toLowerCase() === String(repair.description || '').trim().toLowerCase()
+          );
+
+          if (!isDuplicateRepair) {
+            const repairRes = await fetch('/api/repair-logs', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                computer_id: existingId,
+                ...repair
+              })
+            });
+            if (repairRes.ok) createdRepairs++;
+          }
+        }
+
         skippedPCs++;
         continue;
       }
